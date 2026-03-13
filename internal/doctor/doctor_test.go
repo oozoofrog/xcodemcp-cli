@@ -5,6 +5,8 @@ import (
 	"errors"
 	"strings"
 	"testing"
+
+	"github.com/oozoofrog/xcodemcp-cli/internal/bridge"
 )
 
 func TestReportString(t *testing.T) {
@@ -95,6 +97,17 @@ func TestInspectorSkipsSmokeWhenOverridesInvalid(t *testing.T) {
 	}
 	if !strings.Contains(report.String(), "skipped because explicit overrides failed validation") {
 		t.Fatalf("missing smoke skip message: %s", report.String())
+	}
+}
+
+func TestFormatSessionDetail(t *testing.T) {
+	detail := formatSessionDetail(Options{
+		SessionID:     "11111111-1111-1111-1111-111111111111",
+		SessionSource: bridge.SessionSourcePersisted,
+		SessionPath:   "/tmp/session-id",
+	})
+	if detail != "11111111-1111-1111-1111-111111111111 (persisted at /tmp/session-id)" {
+		t.Fatalf("unexpected detail: %q", detail)
 	}
 }
 

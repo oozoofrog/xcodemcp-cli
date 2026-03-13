@@ -48,6 +48,7 @@ Call a single tool with JSON arguments:
 
 - `--xcode-pid` overrides `MCP_XCODE_PID`.
 - `--session-id` overrides `MCP_XCODE_SESSION_ID`.
+- If no `--session-id` flag or `MCP_XCODE_SESSION_ID` environment variable is provided, `xcodemcp` automatically creates and reuses a persistent session ID at `~/Library/Application Support/xcodemcp/session-id`.
 - In bridge mode, **stdout is protocol-only**. Wrapper logs and diagnostics go to stderr.
 - Convenience commands (`tools list`, `tool call`) use newline-delimited JSON MCP transport with a default `30s` timeout.
 - `tool call --json` currently accepts only an inline JSON object string.

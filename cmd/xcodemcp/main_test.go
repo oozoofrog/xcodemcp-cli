@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -105,6 +106,66 @@ func TestRunToolsListJSON(t *testing.T) {
 	}
 }
 
+func TestRunToolsListGeneratesPersistentSessionID(t *testing.T) {
+	oldCommand := defaultMCPCommand
+	oldSessionPathFunc := defaultSessionPathFunc
+	sessionPath := filepath.Join(t.TempDir(), "session-id")
+	defaultMCPCommand = mcp.Command{Path: os.Args[0], Args: []string{"-test.run=TestMCPHelperProcess", "--", "list-env"}}
+	defaultSessionPathFunc = func() (string, error) { return sessionPath, nil }
+	defer func() {
+		defaultMCPCommand = oldCommand
+		defaultSessionPathFunc = oldSessionPathFunc
+	}()
+
+	var stdout strings.Builder
+	var stderr strings.Builder
+	code := run(context.Background(), []string{"tools", "list", "--json", "--debug"}, strings.NewReader(""), &stdout, &stderr, append(os.Environ(), "GO_WANT_MCP_HELPER_PROCESS=1"))
+	if code != 0 {
+		t.Fatalf("exit code = %d, want 0 (stderr=%q)", code, stderr.String())
+	}
+	data, err := os.ReadFile(sessionPath)
+	if err != nil {
+		t.Fatalf("ReadFile(%q) failed: %v", sessionPath, err)
+	}
+	sessionID := strings.TrimSpace(string(data))
+	if !bridge.IsValidUUID(sessionID) {
+		t.Fatalf("persisted session ID is invalid: %q", sessionID)
+	}
+	if !strings.Contains(stderr.String(), "generated persistent MCP_XCODE_SESSION_ID "+sessionID) {
+		t.Fatalf("stderr = %q, want generated session debug log", stderr.String())
+	}
+}
+
+func TestRunToolsListReusesPersistentSessionID(t *testing.T) {
+	oldCommand := defaultMCPCommand
+	oldSessionPathFunc := defaultSessionPathFunc
+	sessionPath := filepath.Join(t.TempDir(), "session-id")
+	wantSessionID := "44444444-4444-4444-8444-444444444444"
+	if err := os.WriteFile(sessionPath, []byte(wantSessionID+"\n"), 0o600); err != nil {
+		t.Fatalf("WriteFile failed: %v", err)
+	}
+	defaultMCPCommand = mcp.Command{Path: os.Args[0], Args: []string{"-test.run=TestMCPHelperProcess", "--", "list-env"}}
+	defaultSessionPathFunc = func() (string, error) { return sessionPath, nil }
+	defer func() {
+		defaultMCPCommand = oldCommand
+		defaultSessionPathFunc = oldSessionPathFunc
+	}()
+
+	var stdout strings.Builder
+	var stderr strings.Builder
+	env := append(os.Environ(),
+		"GO_WANT_MCP_HELPER_PROCESS=1",
+		"EXPECT_SESSION_ID="+wantSessionID,
+	)
+	code := run(context.Background(), []string{"tools", "list", "--json", "--debug"}, strings.NewReader(""), &stdout, &stderr, env)
+	if code != 0 {
+		t.Fatalf("exit code = %d, want 0 (stderr=%q)", code, stderr.String())
+	}
+	if !strings.Contains(stderr.String(), "using persisted MCP_XCODE_SESSION_ID "+wantSessionID) {
+		t.Fatalf("stderr = %q, want persisted session debug log", stderr.String())
+	}
+}
+
 func TestRunToolCallIsErrorExitsOne(t *testing.T) {
 	oldCommand := defaultMCPCommand
 	defaultMCPCommand = mcp.Command{Path: os.Args[0], Args: []string{"-test.run=TestMCPHelperProcess", "--", "call-error"}}
@@ -149,6 +210,19 @@ func TestMCPHelperProcess(t *testing.T) {
 		server.expectInitialized()
 		server.expectRequest(2, "tools/list")
 		server.write(map[string]any{"jsonrpc": "2.0", "id": 2, "result": map[string]any{"tools": []map[string]any{{"name": "build_sim", "description": "Build for simulator"}, {"name": "launch_app_sim"}}}})
+	case "list-env":
+		gotSessionID := os.Getenv("MCP_XCODE_SESSION_ID")
+		if expected := os.Getenv("EXPECT_SESSION_ID"); expected != "" {
+			if gotSessionID != expected {
+				t.Fatalf("MCP_XCODE_SESSION_ID = %q, want %q", gotSessionID, expected)
+			}
+		} else if !bridge.IsValidUUID(gotSessionID) {
+			t.Fatalf("MCP_XCODE_SESSION_ID is not a valid UUID: %q", gotSessionID)
+		}
+		server.expectInitialize()
+		server.expectInitialized()
+		server.expectRequest(2, "tools/list")
+		server.write(map[string]any{"jsonrpc": "2.0", "id": 2, "result": map[string]any{"tools": []map[string]any{{"name": "list_windows"}}}})
 	case "call-error":
 		server.expectInitialize()
 		server.expectInitialized()

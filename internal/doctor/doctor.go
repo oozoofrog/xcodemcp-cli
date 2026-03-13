@@ -35,9 +35,11 @@ type Report struct {
 }
 
 type Options struct {
-	BaseEnv   []string
-	XcodePID  string
-	SessionID string
+	BaseEnv       []string
+	XcodePID      string
+	SessionID     string
+	SessionSource bridge.SessionSource
+	SessionPath   string
 }
 
 type Process struct {
@@ -173,7 +175,7 @@ func (i Inspector) Run(ctx context.Context, opts Options) Report {
 		sessionValid = false
 		checks = append(checks, Check{Name: "effective MCP_XCODE_SESSION_ID", Status: StatusFail, Detail: "MCP_XCODE_SESSION_ID must be a UUID"})
 	} else {
-		checks = append(checks, Check{Name: "effective MCP_XCODE_SESSION_ID", Status: StatusOK, Detail: opts.SessionID})
+		checks = append(checks, Check{Name: "effective MCP_XCODE_SESSION_ID", Status: StatusOK, Detail: formatSessionDetail(opts)})
 	}
 
 	smokeEnv := bridge.ApplyEnvOverrides(opts.BaseEnv, bridge.EnvOptions{XcodePID: opts.XcodePID, SessionID: opts.SessionID})
@@ -198,6 +200,24 @@ func (i Inspector) Run(ctx context.Context, opts Options) Report {
 	}
 
 	return Report{Checks: checks}
+}
+
+func formatSessionDetail(opts Options) string {
+	switch opts.SessionSource {
+	case bridge.SessionSourcePersisted:
+		if opts.SessionPath != "" {
+			return fmt.Sprintf("%s (persisted at %s)", opts.SessionID, opts.SessionPath)
+		}
+	case bridge.SessionSourceGenerated:
+		if opts.SessionPath != "" {
+			return fmt.Sprintf("%s (generated and saved to %s)", opts.SessionID, opts.SessionPath)
+		}
+	case bridge.SessionSourceEnv:
+		return fmt.Sprintf("%s (from environment)", opts.SessionID)
+	case bridge.SessionSourceExplicit:
+		return fmt.Sprintf("%s (from --session-id)", opts.SessionID)
+	}
+	return opts.SessionID
 }
 
 func statusIcon(status Status) string {

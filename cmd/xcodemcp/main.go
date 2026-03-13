@@ -16,6 +16,7 @@ import (
 
 var defaultBridgeCommand = bridge.Command{Path: "xcrun", Args: []string{"mcpbridge"}}
 var defaultMCPCommand = mcp.Command{Path: "xcrun", Args: []string{"mcpbridge"}}
+var defaultSessionPathFunc = bridge.DefaultSessionFilePath
 
 func main() {
 	os.Exit(run(context.Background(), os.Args[1:], os.Stdin, os.Stdout, os.Stderr, os.Environ()))
@@ -40,17 +41,33 @@ func run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.
 		return 1
 	}
 
-	effective := bridge.EffectiveOptions(env, bridge.EnvOptions{
+	sessionPath, err := defaultSessionPathFunc()
+	if err != nil {
+		fmt.Fprintf(stderr, "xcodemcp: %v\n", err)
+		return 1
+	}
+
+	resolved, err := bridge.ResolveOptions(env, bridge.EnvOptions{
 		XcodePID:  cfg.XcodePID,
 		SessionID: cfg.SessionID,
-	})
+	}, sessionPath)
+	if err != nil {
+		fmt.Fprintf(stderr, "xcodemcp: %v\n", err)
+		return 1
+	}
+	effective := resolved.EnvOptions
+	if cfg.Debug {
+		logResolvedSession(stderr, resolved)
+	}
 
 	switch cfg.Command {
 	case commandDoctor:
 		report := doctor.NewInspector().Run(ctx, doctor.Options{
-			BaseEnv:   env,
-			XcodePID:  effective.XcodePID,
-			SessionID: effective.SessionID,
+			BaseEnv:       env,
+			XcodePID:      effective.XcodePID,
+			SessionID:     effective.SessionID,
+			SessionSource: resolved.SessionSource,
+			SessionPath:   resolved.SessionPath,
 		})
 		fmt.Fprint(stdout, report.String())
 		if report.Success() {
@@ -143,6 +160,19 @@ func run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.
 	default:
 		fmt.Fprintf(stderr, "xcodemcp: unsupported command %q\n", cfg.Command)
 		return 1
+	}
+}
+
+func logResolvedSession(w io.Writer, resolved bridge.ResolvedOptions) {
+	switch resolved.SessionSource {
+	case bridge.SessionSourceExplicit:
+		fmt.Fprintln(w, "[debug] using MCP_XCODE_SESSION_ID from --session-id")
+	case bridge.SessionSourceEnv:
+		fmt.Fprintln(w, "[debug] using MCP_XCODE_SESSION_ID from environment")
+	case bridge.SessionSourcePersisted:
+		fmt.Fprintf(w, "[debug] using persisted MCP_XCODE_SESSION_ID %s from %s\n", resolved.SessionID, resolved.SessionPath)
+	case bridge.SessionSourceGenerated:
+		fmt.Fprintf(w, "[debug] generated persistent MCP_XCODE_SESSION_ID %s at %s\n", resolved.SessionID, resolved.SessionPath)
 	}
 }
 
