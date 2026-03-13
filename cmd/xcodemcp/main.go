@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -10,7 +11,11 @@ import (
 
 	"github.com/oozoofrog/xcodemcp-cli/internal/bridge"
 	"github.com/oozoofrog/xcodemcp-cli/internal/doctor"
+	"github.com/oozoofrog/xcodemcp-cli/internal/mcp"
 )
+
+var defaultBridgeCommand = bridge.Command{Path: "xcrun", Args: []string{"mcpbridge"}}
+var defaultMCPCommand = mcp.Command{Path: "xcrun", Args: []string{"mcpbridge"}}
 
 func main() {
 	os.Exit(run(context.Background(), os.Args[1:], os.Stdin, os.Stdout, os.Stderr, os.Environ()))
@@ -59,23 +64,105 @@ func run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.
 		}
 
 		result, err := bridge.Run(ctx, bridge.Config{
-			Command: bridge.Command{
-				Path: "xcrun",
-				Args: []string{"mcpbridge"},
-			},
-			Env:    bridge.ApplyEnvOverrides(env, effective),
-			In:     stdin,
-			Out:    stdout,
-			ErrOut: stderr,
-			Debug:  cfg.Debug,
+			Command: defaultBridgeCommand,
+			Env:     bridge.ApplyEnvOverrides(env, effective),
+			In:      stdin,
+			Out:     stdout,
+			ErrOut:  stderr,
+			Debug:   cfg.Debug,
 		})
 		if err != nil {
 			fmt.Fprintf(stderr, "xcodemcp: %v\n", err)
 			return 1
 		}
 		return result.ExitCode
+	case commandToolsList:
+		if err := bridge.ValidateEnvOptions(effective); err != nil {
+			fmt.Fprintf(stderr, "xcodemcp: invalid MCP options: %v\n", err)
+			return 1
+		}
+		cmdCtx, cancel := context.WithTimeout(ctx, cfg.Timeout)
+		defer cancel()
+		tools, err := mcp.ListTools(cmdCtx, mcp.Config{
+			Command: defaultMCPCommand,
+			Env:     bridge.ApplyEnvOverrides(env, effective),
+			Debug:   cfg.Debug,
+			ErrOut:  stderr,
+		})
+		if err != nil {
+			fmt.Fprintf(stderr, "xcodemcp: %v\n", err)
+			return 1
+		}
+		if cfg.JSONOutput {
+			if err := writeJSON(stdout, tools); err != nil {
+				fmt.Fprintf(stderr, "xcodemcp: %v\n", err)
+				return 1
+			}
+			return 0
+		}
+		for _, tool := range tools {
+			name, _ := tool["name"].(string)
+			description, _ := tool["description"].(string)
+			if description != "" {
+				fmt.Fprintf(stdout, "%s\t%s\n", name, description)
+			} else {
+				fmt.Fprintln(stdout, name)
+			}
+		}
+		return 0
+	case commandToolCall:
+		if err := bridge.ValidateEnvOptions(effective); err != nil {
+			fmt.Fprintf(stderr, "xcodemcp: invalid MCP options: %v\n", err)
+			return 1
+		}
+		arguments, err := parseJSONObject(cfg.ToolInputJSON)
+		if err != nil {
+			fmt.Fprintf(stderr, "xcodemcp: %v\n", err)
+			return 1
+		}
+		cmdCtx, cancel := context.WithTimeout(ctx, cfg.Timeout)
+		defer cancel()
+		result, err := mcp.CallTool(cmdCtx, mcp.Config{
+			Command: defaultMCPCommand,
+			Env:     bridge.ApplyEnvOverrides(env, effective),
+			Debug:   cfg.Debug,
+			ErrOut:  stderr,
+		}, cfg.ToolName, arguments)
+		if err != nil {
+			fmt.Fprintf(stderr, "xcodemcp: %v\n", err)
+			return 1
+		}
+		if err := writeJSON(stdout, result.Result); err != nil {
+			fmt.Fprintf(stderr, "xcodemcp: %v\n", err)
+			return 1
+		}
+		if result.IsError {
+			return 1
+		}
+		return 0
 	default:
 		fmt.Fprintf(stderr, "xcodemcp: unsupported command %q\n", cfg.Command)
 		return 1
 	}
+}
+
+func parseJSONObject(raw string) (map[string]any, error) {
+	var value any
+	if err := json.Unmarshal([]byte(raw), &value); err != nil {
+		return nil, fmt.Errorf("--json must be valid JSON: %w", err)
+	}
+	obj, ok := value.(map[string]any)
+	if !ok {
+		return nil, errors.New("--json must decode to a JSON object")
+	}
+	return obj, nil
+}
+
+func writeJSON(w io.Writer, value any) error {
+	encoder := json.NewEncoder(w)
+	encoder.SetIndent("", "  ")
+	if err := encoder.Encode(value); err != nil {
+		return fmt.Errorf("write JSON output: %w", err)
+	}
+	return nil
 }

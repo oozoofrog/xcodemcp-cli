@@ -24,6 +24,20 @@ Run environment diagnostics:
 MCP_XCODE_PID=12345 ./xcodemcp doctor
 ```
 
+List tools through the MCP bridge:
+
+```bash
+./xcodemcp tools list
+./xcodemcp tools list --json --timeout 30s
+```
+
+Call a single tool with JSON arguments:
+
+```bash
+./xcodemcp tool call build_sim --json '{"scheme":"Demo"}'
+./xcodemcp tool call launch_app_sim --json '{"args":[]}' --timeout 10s
+```
+
 ## Git workflow
 
 - `main`: stable baseline branch
@@ -35,4 +49,5 @@ MCP_XCODE_PID=12345 ./xcodemcp doctor
 - `--xcode-pid` overrides `MCP_XCODE_PID`.
 - `--session-id` overrides `MCP_XCODE_SESSION_ID`.
 - In bridge mode, **stdout is protocol-only**. Wrapper logs and diagnostics go to stderr.
-- v1 only covers raw bridge passthrough and `doctor` diagnostics.
+- Convenience commands (`tools list`, `tool call`) use newline-delimited JSON MCP transport with a default `30s` timeout.
+- `tool call --json` currently accepts only an inline JSON object string.
