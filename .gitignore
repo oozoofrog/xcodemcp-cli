@@ -1,0 +1,11 @@
+# macOS
+.DS_Store
+
+# Go build outputs
+/xcodemcp
+*.test
+*.out
+coverage.out
+
+# local scratch/build dirs
+/.tmp/
