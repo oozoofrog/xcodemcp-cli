@@ -24,6 +24,12 @@ Run environment diagnostics:
 MCP_XCODE_PID=12345 ./xcodemcp doctor
 ```
 
+## Git workflow
+
+- `main`: stable baseline branch
+- `codex/*`: implementation branches for agent-driven changes
+- Open pull requests from `codex/*` into `main`
+
 ## Notes
 
 - `--xcode-pid` overrides `MCP_XCODE_PID`.
