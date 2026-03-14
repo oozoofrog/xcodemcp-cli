@@ -29,7 +29,8 @@ Run environment diagnostics:
 
 ```bash
 ./xcodemcp doctor
-MCP_XCODE_PID=12345 ./xcodemcp doctor
+./xcodemcp doctor --json
+MCP_XCODE_PID=12345 ./xcodemcp doctor --json
 ```
 
 List tools through the MCP bridge:
@@ -39,20 +40,34 @@ List tools through the MCP bridge:
 ./xcodemcp tools list --json --timeout 30s
 ```
 
-Inspect the LaunchAgent used by `tools` commands:
+Inspect a single tool before calling it:
 
 ```bash
-./xcodemcp agent status
-./xcodemcp agent stop
-./xcodemcp agent uninstall
+./xcodemcp tool inspect XcodeListWindows
+./xcodemcp tool inspect XcodeListWindows --json
 ```
 
 Call a single tool with JSON arguments:
 
 ```bash
-./xcodemcp tool call build_sim --json '{"scheme":"Demo"}'
-./xcodemcp tool call launch_app_sim --json '{"args":[]}' --timeout 10s
+./xcodemcp tool call XcodeListWindows --json '{}'
+./xcodemcp tool call BuildProject --json @/tmp/payload.json
+printf '{}' | ./xcodemcp tool call XcodeListWindows --json-stdin
 ```
+
+Inspect the LaunchAgent used by `tools` commands:
+
+```bash
+./xcodemcp agent status
+./xcodemcp agent status --json
+./xcodemcp agent stop
+./xcodemcp agent uninstall
+```
+
+## Agent onboarding
+
+- Quick rules for first-time agents: `/Volumes/eyedisk/develop/oozoofrog/xcodemcp-cli/AGENTS.md`
+- Detailed walkthrough: `/Volumes/eyedisk/develop/oozoofrog/xcodemcp-cli/docs/agent-quickstart.md`
 
 ## Git workflow
 
@@ -66,7 +81,6 @@ Call a single tool with JSON arguments:
 - `--session-id` overrides `MCP_XCODE_SESSION_ID`.
 - If no `--session-id` flag or `MCP_XCODE_SESSION_ID` environment variable is provided, `xcodemcp` automatically creates and reuses a persistent session ID at `~/Library/Application Support/xcodemcp/session-id`.
 - In bridge mode, **stdout is protocol-only**. Wrapper logs and diagnostics go to stderr.
-- Convenience commands (`tools list`, `tool call`) automatically install and bootstrap a per-user LaunchAgent at `~/Library/LaunchAgents/io.oozoofrog.xcodemcp.plist`.
+- Convenience commands (`tools list`, `tool inspect`, `tool call`) automatically install and bootstrap a per-user LaunchAgent at `~/Library/LaunchAgents/io.oozoofrog.xcodemcp.plist`.
 - The LaunchAgent talks to `xcrun mcpbridge` over a long-lived local Unix socket and shuts itself down after `10m` of idleness by default.
-- Convenience commands use newline-delimited JSON transport with a default `30s` timeout.
-- `tool call --json` currently accepts only an inline JSON object string.
+- `tool call` accepts exactly one payload source: inline `--json`, `--json @file`, or `--json-stdin`.

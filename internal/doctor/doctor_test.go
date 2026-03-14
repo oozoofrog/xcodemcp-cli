@@ -2,10 +2,12 @@ package doctor
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"strings"
 	"testing"
 
+	"github.com/oozoofrog/xcodemcp-cli/internal/agent"
 	"github.com/oozoofrog/xcodemcp-cli/internal/bridge"
 )
 
@@ -24,6 +26,29 @@ func TestReportString(t *testing.T) {
 	}
 	if report.Success() {
 		t.Fatal("report should not be successful when it contains a fail status")
+	}
+}
+
+func TestReportJSON(t *testing.T) {
+	report := Report{Checks: []Check{
+		{Name: "one", Status: StatusOK, Detail: "ok detail"},
+		{Name: "two", Status: StatusWarn, Detail: "warn detail"},
+		{Name: "three", Status: StatusFail, Detail: "fail detail"},
+		{Name: "four", Status: StatusInfo, Detail: "info detail"},
+	}}
+	payload := report.JSON()
+	if payload.Success {
+		t.Fatalf("expected unsuccessful payload: %+v", payload)
+	}
+	if payload.Summary != (Summary{OK: 1, Warn: 1, Fail: 1, Info: 1}) {
+		t.Fatalf("unexpected summary: %+v", payload.Summary)
+	}
+	data, err := json.Marshal(payload)
+	if err != nil {
+		t.Fatalf("Marshal failed: %v", err)
+	}
+	if !strings.Contains(string(data), `"checks"`) {
+		t.Fatalf("unexpected JSON payload: %s", string(data))
 	}
 }
 
@@ -67,6 +92,39 @@ func TestInspectorRunSuccess(t *testing.T) {
 	}
 	if !strings.Contains(report.String(), "Summary: 7 ok, 0 warn, 0 fail, 0 info") {
 		t.Fatalf("unexpected summary: %s", report.String())
+	}
+}
+
+func TestInspectorIncludesAgentStatusInfo(t *testing.T) {
+	inspector := Inspector{
+		LookPath: func(file string) (string, error) { return "/usr/bin/xcrun", nil },
+		RunCommand: func(ctx context.Context, req CommandRequest) (CommandResult, error) {
+			if req.Name == "xcode-select" {
+				return CommandResult{Stdout: "/Applications/Xcode.app/Contents/Developer\n"}, nil
+			}
+			return CommandResult{Stdout: "help"}, nil
+		},
+		ListProcesses: func(ctx context.Context) ([]Process, error) {
+			return []Process{{PID: 101, Command: "/Applications/Xcode.app/Contents/MacOS/Xcode"}}, nil
+		},
+	}
+
+	report := inspector.Run(context.Background(), Options{
+		AgentStatus: &agent.Status{
+			PlistInstalled:    true,
+			PlistPath:         "/tmp/io.oozoofrog.xcodemcp.plist",
+			SocketReachable:   true,
+			SocketPath:        "/tmp/daemon.sock",
+			RegisteredBinary:  "/tmp/xcodemcp",
+			CurrentBinary:     "/tmp/xcodemcp",
+			BinaryPathMatches: true,
+		},
+	})
+	text := report.String()
+	for _, want := range []string{"LaunchAgent plist", "LaunchAgent socket", "LaunchAgent binary registration"} {
+		if !strings.Contains(text, want) {
+			t.Fatalf("report output missing %q: %s", want, text)
+		}
 	}
 }
 

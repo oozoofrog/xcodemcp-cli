@@ -13,6 +13,7 @@ import (
 
 	"github.com/oozoofrog/xcodemcp-cli/internal/agent"
 	"github.com/oozoofrog/xcodemcp-cli/internal/bridge"
+	"github.com/oozoofrog/xcodemcp-cli/internal/doctor"
 	"github.com/oozoofrog/xcodemcp-cli/internal/mcp"
 )
 
@@ -32,6 +33,16 @@ func TestParseCLIDefaultBridge(t *testing.T) {
 	}
 }
 
+func TestParseCLIDoctorJSON(t *testing.T) {
+	cfg, _, err := parseCLI([]string{"doctor", "--json"})
+	if err != nil {
+		t.Fatalf("parseCLI returned error: %v", err)
+	}
+	if cfg.Command != commandDoctor || !cfg.JSONOutput {
+		t.Fatalf("unexpected config: %+v", cfg)
+	}
+}
+
 func TestParseCLIToolsList(t *testing.T) {
 	cfg, _, err := parseCLI([]string{"tools", "list", "--json", "--timeout", "45s"})
 	if err != nil {
@@ -45,7 +56,20 @@ func TestParseCLIToolsList(t *testing.T) {
 	}
 }
 
-func TestParseCLIToolCall(t *testing.T) {
+func TestParseCLIToolInspect(t *testing.T) {
+	cfg, _, err := parseCLI([]string{"tool", "inspect", "BuildProject", "--json", "--xcode-pid", "123"})
+	if err != nil {
+		t.Fatalf("parseCLI returned error: %v", err)
+	}
+	if cfg.Command != commandToolInspect {
+		t.Fatalf("command = %q, want %q", cfg.Command, commandToolInspect)
+	}
+	if cfg.ToolName != "BuildProject" || !cfg.JSONOutput || cfg.XcodePID != "123" {
+		t.Fatalf("unexpected tool inspect config: %+v", cfg)
+	}
+}
+
+func TestParseCLIToolCallInlineJSON(t *testing.T) {
 	cfg, _, err := parseCLI([]string{"tool", "call", "build_sim", "--json", `{"scheme":"Demo"}`, "--timeout", "15s"})
 	if err != nil {
 		t.Fatalf("parseCLI returned error: %v", err)
@@ -58,23 +82,40 @@ func TestParseCLIToolCall(t *testing.T) {
 	}
 }
 
-func TestParseCLIAgentStatus(t *testing.T) {
-	cfg, _, err := parseCLI([]string{"agent", "status"})
+func TestParseCLIToolCallJSONStdin(t *testing.T) {
+	cfg, _, err := parseCLI([]string{"tool", "call", "build_sim", "--json-stdin"})
 	if err != nil {
 		t.Fatalf("parseCLI returned error: %v", err)
 	}
-	if cfg.Command != commandAgentStatus {
-		t.Fatalf("command = %q, want %q", cfg.Command, commandAgentStatus)
+	if !cfg.ToolInputFromStdin || cfg.ToolInputJSON != "" {
+		t.Fatalf("unexpected tool call stdin config: %+v", cfg)
+	}
+}
+
+func TestParseCLIToolCallRejectsConflictingInputs(t *testing.T) {
+	_, _, err := parseCLI([]string{"tool", "call", "build_sim", "--json", `{"scheme":"Demo"}`, "--json-stdin"})
+	if err == nil || !strings.Contains(err.Error(), "exactly one of --json or --json-stdin") {
+		t.Fatalf("expected conflicting input error, got %v", err)
+	}
+}
+
+func TestParseCLIAgentStatus(t *testing.T) {
+	cfg, _, err := parseCLI([]string{"agent", "status", "--json"})
+	if err != nil {
+		t.Fatalf("parseCLI returned error: %v", err)
+	}
+	if cfg.Command != commandAgentStatus || !cfg.JSONOutput {
+		t.Fatalf("unexpected config: %+v", cfg)
 	}
 }
 
 func TestParseCLIHelp(t *testing.T) {
-	_, usage, err := parseCLI([]string{"help", "agent", "status"})
+	_, usage, err := parseCLI([]string{"help", "tool", "inspect"})
 	if err != errUsageRequested {
 		t.Fatalf("err = %v, want errUsageRequested", err)
 	}
-	if !strings.Contains(usage, "xcodemcp agent status") {
-		t.Fatalf("usage missing agent status help: %q", usage)
+	if !strings.Contains(usage, "tool inspect") {
+		t.Fatalf("usage missing tool inspect help: %q", usage)
 	}
 }
 
@@ -97,8 +138,30 @@ func TestRunRejectsInvalidBridgeOptions(t *testing.T) {
 	}
 }
 
+func TestRunDoctorJSON(t *testing.T) {
+	withStubs(t, func() {
+		defaultAgentStatusFunc = func(ctx context.Context, cfg agent.Config) (agent.Status, error) {
+			return agent.Status{Label: agent.LaunchAgentLabel}, nil
+		}
+
+		var stdout strings.Builder
+		var stderr strings.Builder
+		code := run(context.Background(), []string{"doctor", "--json"}, strings.NewReader(""), &stdout, &stderr, os.Environ())
+		if code != 0 {
+			t.Fatalf("exit code = %d, want 0 (stderr=%q)", code, stderr.String())
+		}
+		var report doctor.JSONReport
+		if err := json.Unmarshal([]byte(stdout.String()), &report); err != nil {
+			t.Fatalf("stdout is not JSON report: %v (stdout=%q)", err, stdout.String())
+		}
+		if !report.Success || len(report.Checks) == 0 {
+			t.Fatalf("unexpected report: %+v", report)
+		}
+	})
+}
+
 func TestRunToolsListJSON(t *testing.T) {
-	withAgentStubs(t, func() {
+	withStubs(t, func() {
 		defaultToolsListFunc = func(ctx context.Context, cfg agent.Config, req agent.Request) ([]map[string]any, error) {
 			return []map[string]any{{"name": "build_sim", "description": "Build for simulator"}, {"name": "launch_app_sim"}}, nil
 		}
@@ -119,8 +182,73 @@ func TestRunToolsListJSON(t *testing.T) {
 	})
 }
 
+func TestRunToolInspectText(t *testing.T) {
+	withStubs(t, func() {
+		defaultToolsListFunc = func(ctx context.Context, cfg agent.Config, req agent.Request) ([]map[string]any, error) {
+			return []map[string]any{{
+				"name":        "BuildProject",
+				"description": "Build the active Xcode project",
+				"inputSchema": map[string]any{"type": "object", "properties": map[string]any{"scheme": map[string]any{"type": "string"}}},
+			}}, nil
+		}
+
+		var stdout strings.Builder
+		var stderr strings.Builder
+		code := run(context.Background(), []string{"tool", "inspect", "BuildProject"}, strings.NewReader(""), &stdout, &stderr, os.Environ())
+		if code != 0 {
+			t.Fatalf("exit code = %d, want 0 (stderr=%q)", code, stderr.String())
+		}
+		text := stdout.String()
+		for _, want := range []string{"name: BuildProject", "description: Build the active Xcode project", "inputSchema:", `"scheme"`} {
+			if !strings.Contains(text, want) {
+				t.Fatalf("inspect output missing %q: %s", want, text)
+			}
+		}
+	})
+}
+
+func TestRunToolInspectJSON(t *testing.T) {
+	withStubs(t, func() {
+		defaultToolsListFunc = func(ctx context.Context, cfg agent.Config, req agent.Request) ([]map[string]any, error) {
+			return []map[string]any{{"name": "BuildProject", "description": "Build"}}, nil
+		}
+
+		var stdout strings.Builder
+		var stderr strings.Builder
+		code := run(context.Background(), []string{"tool", "inspect", "BuildProject", "--json"}, strings.NewReader(""), &stdout, &stderr, os.Environ())
+		if code != 0 {
+			t.Fatalf("exit code = %d, want 0 (stderr=%q)", code, stderr.String())
+		}
+		var tool map[string]any
+		if err := json.Unmarshal([]byte(stdout.String()), &tool); err != nil {
+			t.Fatalf("stdout is not JSON tool object: %v", err)
+		}
+		if tool["name"] != "BuildProject" {
+			t.Fatalf("unexpected tool object: %+v", tool)
+		}
+	})
+}
+
+func TestRunToolInspectMissingTool(t *testing.T) {
+	withStubs(t, func() {
+		defaultToolsListFunc = func(ctx context.Context, cfg agent.Config, req agent.Request) ([]map[string]any, error) {
+			return []map[string]any{{"name": "OtherTool"}}, nil
+		}
+
+		var stdout strings.Builder
+		var stderr strings.Builder
+		code := run(context.Background(), []string{"tool", "inspect", "BuildProject"}, strings.NewReader(""), &stdout, &stderr, os.Environ())
+		if code != 1 {
+			t.Fatalf("exit code = %d, want 1", code)
+		}
+		if !strings.Contains(stderr.String(), "tool not found") {
+			t.Fatalf("stderr = %q, want tool not found error", stderr.String())
+		}
+	})
+}
+
 func TestRunToolsListGeneratesPersistentSessionID(t *testing.T) {
-	withAgentStubs(t, func() {
+	withStubs(t, func() {
 		oldSessionPathFunc := defaultSessionPathFunc
 		sessionPath := filepath.Join(t.TempDir(), "session-id")
 		defaultSessionPathFunc = func() (string, error) { return sessionPath, nil }
@@ -154,7 +282,7 @@ func TestRunToolsListGeneratesPersistentSessionID(t *testing.T) {
 }
 
 func TestRunToolsListReusesPersistentSessionID(t *testing.T) {
-	withAgentStubs(t, func() {
+	withStubs(t, func() {
 		oldSessionPathFunc := defaultSessionPathFunc
 		sessionPath := filepath.Join(t.TempDir(), "session-id")
 		wantSessionID := "44444444-4444-4444-8444-444444444444"
@@ -184,7 +312,7 @@ func TestRunToolsListReusesPersistentSessionID(t *testing.T) {
 }
 
 func TestRunToolCallIsErrorExitsOne(t *testing.T) {
-	withAgentStubs(t, func() {
+	withStubs(t, func() {
 		defaultToolCallFunc = func(ctx context.Context, cfg agent.Config, req agent.Request, toolName string, arguments map[string]any) (mcp.CallResult, error) {
 			return mcp.CallResult{Result: map[string]any{"isError": true, "content": []map[string]any{{"type": "text", "text": "boom"}}}, IsError: true}, nil
 		}
@@ -204,6 +332,46 @@ func TestRunToolCallIsErrorExitsOne(t *testing.T) {
 	})
 }
 
+func TestRunToolCallFromFile(t *testing.T) {
+	withStubs(t, func() {
+		payloadPath := filepath.Join(t.TempDir(), "payload.json")
+		if err := os.WriteFile(payloadPath, []byte(`{"scheme":"Demo"}`), 0o600); err != nil {
+			t.Fatalf("WriteFile failed: %v", err)
+		}
+		defaultToolCallFunc = func(ctx context.Context, cfg agent.Config, req agent.Request, toolName string, arguments map[string]any) (mcp.CallResult, error) {
+			if arguments["scheme"] != "Demo" {
+				t.Fatalf("arguments = %+v, want scheme Demo", arguments)
+			}
+			return mcp.CallResult{Result: map[string]any{"ok": true}}, nil
+		}
+
+		var stdout strings.Builder
+		var stderr strings.Builder
+		code := run(context.Background(), []string{"tool", "call", "build_sim", "--json", "@" + payloadPath}, strings.NewReader(""), &stdout, &stderr, os.Environ())
+		if code != 0 {
+			t.Fatalf("exit code = %d, want 0 (stderr=%q)", code, stderr.String())
+		}
+	})
+}
+
+func TestRunToolCallFromStdin(t *testing.T) {
+	withStubs(t, func() {
+		defaultToolCallFunc = func(ctx context.Context, cfg agent.Config, req agent.Request, toolName string, arguments map[string]any) (mcp.CallResult, error) {
+			if arguments["scheme"] != "Demo" {
+				t.Fatalf("arguments = %+v, want scheme Demo", arguments)
+			}
+			return mcp.CallResult{Result: map[string]any{"ok": true}}, nil
+		}
+
+		var stdout strings.Builder
+		var stderr strings.Builder
+		code := run(context.Background(), []string{"tool", "call", "build_sim", "--json-stdin"}, strings.NewReader(`{"scheme":"Demo"}`), &stdout, &stderr, os.Environ())
+		if code != 0 {
+			t.Fatalf("exit code = %d, want 0 (stderr=%q)", code, stderr.String())
+		}
+	})
+}
+
 func TestRunRejectsNonObjectToolJSON(t *testing.T) {
 	var stdout strings.Builder
 	var stderr strings.Builder
@@ -211,13 +379,13 @@ func TestRunRejectsNonObjectToolJSON(t *testing.T) {
 	if code != 1 {
 		t.Fatalf("exit code = %d, want 1", code)
 	}
-	if !strings.Contains(stderr.String(), "must decode to a JSON object") {
+	if !strings.Contains(stderr.String(), "JSON payload must decode to a JSON object") {
 		t.Fatalf("stderr = %q, want JSON object error", stderr.String())
 	}
 }
 
-func TestRunAgentStatus(t *testing.T) {
-	withAgentStubs(t, func() {
+func TestRunAgentStatusText(t *testing.T) {
+	withStubs(t, func() {
 		defaultAgentStatusFunc = func(ctx context.Context, cfg agent.Config) (agent.Status, error) {
 			return agent.Status{
 				Label:             agent.LaunchAgentLabel,
@@ -246,7 +414,28 @@ func TestRunAgentStatus(t *testing.T) {
 	})
 }
 
-func withAgentStubs(t *testing.T, fn func()) {
+func TestRunAgentStatusJSON(t *testing.T) {
+	withStubs(t, func() {
+		defaultAgentStatusFunc = func(ctx context.Context, cfg agent.Config) (agent.Status, error) {
+			return agent.Status{Label: agent.LaunchAgentLabel, Running: true}, nil
+		}
+		var stdout strings.Builder
+		var stderr strings.Builder
+		code := run(context.Background(), []string{"agent", "status", "--json"}, strings.NewReader(""), &stdout, &stderr, os.Environ())
+		if code != 0 {
+			t.Fatalf("exit code = %d, want 0 (stderr=%q)", code, stderr.String())
+		}
+		var status agent.Status
+		if err := json.Unmarshal([]byte(stdout.String()), &status); err != nil {
+			t.Fatalf("stdout is not JSON status: %v", err)
+		}
+		if status.Label != agent.LaunchAgentLabel || !status.Running {
+			t.Fatalf("unexpected status: %+v", status)
+		}
+	})
+}
+
+func withStubs(t *testing.T, fn func()) {
 	t.Helper()
 	oldConfig := defaultAgentConfigFunc
 	oldList := defaultToolsListFunc

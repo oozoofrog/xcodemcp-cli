@@ -26,13 +26,26 @@ const (
 )
 
 type Check struct {
-	Name   string
-	Status Status
-	Detail string
+	Name   string `json:"name"`
+	Status Status `json:"status"`
+	Detail string `json:"detail"`
 }
 
 type Report struct {
 	Checks []Check
+}
+
+type Summary struct {
+	OK   int `json:"ok"`
+	Warn int `json:"warn"`
+	Fail int `json:"fail"`
+	Info int `json:"info"`
+}
+
+type JSONReport struct {
+	Success bool    `json:"success"`
+	Summary Summary `json:"summary"`
+	Checks  []Check `json:"checks"`
 }
 
 type Options struct {
@@ -86,24 +99,39 @@ func (r Report) Success() bool {
 	return true
 }
 
-func (r Report) String() string {
-	var okCount, warnCount, failCount, infoCount int
-	var b strings.Builder
-	b.WriteString("xcodemcp doctor\n\n")
+func (r Report) Summary() Summary {
+	var summary Summary
 	for _, check := range r.Checks {
 		switch check.Status {
 		case StatusOK:
-			okCount++
+			summary.OK++
 		case StatusWarn:
-			warnCount++
+			summary.Warn++
 		case StatusFail:
-			failCount++
+			summary.Fail++
 		case StatusInfo:
-			infoCount++
+			summary.Info++
 		}
+	}
+	return summary
+}
+
+func (r Report) JSON() JSONReport {
+	return JSONReport{
+		Success: r.Success(),
+		Summary: r.Summary(),
+		Checks:  append([]Check(nil), r.Checks...),
+	}
+}
+
+func (r Report) String() string {
+	summary := r.Summary()
+	var b strings.Builder
+	b.WriteString("xcodemcp doctor\n\n")
+	for _, check := range r.Checks {
 		fmt.Fprintf(&b, "%s %s: %s\n", statusIcon(check.Status), check.Name, check.Detail)
 	}
-	fmt.Fprintf(&b, "\nSummary: %d ok, %d warn, %d fail, %d info\n", okCount, warnCount, failCount, infoCount)
+	fmt.Fprintf(&b, "\nSummary: %d ok, %d warn, %d fail, %d info\n", summary.OK, summary.Warn, summary.Fail, summary.Info)
 	return b.String()
 }
 

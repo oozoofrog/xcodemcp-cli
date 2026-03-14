@@ -36,18 +36,18 @@ type Request struct {
 }
 
 type Status struct {
-	Label             string
-	PlistPath         string
-	PlistInstalled    bool
-	RegisteredBinary  string
-	CurrentBinary     string
-	BinaryPathMatches bool
-	SocketPath        string
-	SocketReachable   bool
-	Running           bool
-	PID               int
-	IdleTimeout       time.Duration
-	BackendSessions   int
+	Label             string        `json:"label"`
+	PlistPath         string        `json:"plistPath"`
+	PlistInstalled    bool          `json:"plistInstalled"`
+	RegisteredBinary  string        `json:"registeredBinary"`
+	CurrentBinary     string        `json:"currentBinary"`
+	BinaryPathMatches bool          `json:"binaryPathMatches"`
+	SocketPath        string        `json:"socketPath"`
+	SocketReachable   bool          `json:"socketReachable"`
+	Running           bool          `json:"running"`
+	PID               int           `json:"pid"`
+	IdleTimeout       time.Duration `json:"idleTimeout"`
+	BackendSessions   int           `json:"backendSessions"`
 }
 
 type runtimeStatus struct {

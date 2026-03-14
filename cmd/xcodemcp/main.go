@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/signal"
 	"runtime"
+	"strings"
 	"syscall"
 
 	"github.com/oozoofrog/xcodemcp-cli/internal/agent"
@@ -93,7 +94,14 @@ func run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.
 			AgentStatus:    &agentStatus,
 			AgentStatusErr: agentStatusErr,
 		})
-		fmt.Fprint(stdout, report.String())
+		if cfg.JSONOutput {
+			if err := writeJSON(stdout, report.JSON()); err != nil {
+				fmt.Fprintf(stderr, "xcodemcp: %v\n", err)
+				return 1
+			}
+		} else {
+			fmt.Fprint(stdout, report.String())
+		}
 		if report.Success() {
 			return 0
 		}
@@ -145,12 +153,40 @@ func run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.
 			}
 		}
 		return 0
+	case commandToolInspect:
+		if err := bridge.ValidateEnvOptions(effective); err != nil {
+			fmt.Fprintf(stderr, "xcodemcp: invalid MCP options: %v\n", err)
+			return 1
+		}
+		request := agentRequest(env, effective, cfg)
+		tools, err := defaultToolsListFunc(ctx, agentCfg, request)
+		if err != nil {
+			fmt.Fprintf(stderr, "xcodemcp: %v\n", err)
+			return 1
+		}
+		tool, found := findToolByName(tools, cfg.ToolName)
+		if !found {
+			fmt.Fprintf(stderr, "xcodemcp: tool not found: %s\n", cfg.ToolName)
+			return 1
+		}
+		if cfg.JSONOutput {
+			if err := writeJSON(stdout, tool); err != nil {
+				fmt.Fprintf(stderr, "xcodemcp: %v\n", err)
+				return 1
+			}
+			return 0
+		}
+		if err := writeToolInspect(stdout, tool); err != nil {
+			fmt.Fprintf(stderr, "xcodemcp: %v\n", err)
+			return 1
+		}
+		return 0
 	case commandToolCall:
 		if err := bridge.ValidateEnvOptions(effective); err != nil {
 			fmt.Fprintf(stderr, "xcodemcp: invalid MCP options: %v\n", err)
 			return 1
 		}
-		arguments, err := parseJSONObject(cfg.ToolInputJSON)
+		arguments, err := resolveToolArguments(stdin, cfg)
 		if err != nil {
 			fmt.Fprintf(stderr, "xcodemcp: %v\n", err)
 			return 1
@@ -175,7 +211,14 @@ func run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.
 			fmt.Fprintf(stderr, "xcodemcp: %v\n", err)
 			return 1
 		}
-		fmt.Fprint(stdout, formatAgentStatus(status))
+		if cfg.JSONOutput {
+			if err := writeJSON(stdout, status); err != nil {
+				fmt.Fprintf(stderr, "xcodemcp: %v\n", err)
+				return 1
+			}
+		} else {
+			fmt.Fprint(stdout, formatAgentStatus(status))
+		}
 		return 0
 	case commandAgentStop:
 		if err := defaultAgentStopFunc(ctx, agentCfg); err != nil {
@@ -207,6 +250,56 @@ func run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.
 
 func agentRequest(env []string, effective bridge.EnvOptions, cfg cliConfig) agent.Request {
 	return agent.BuildRequest(env, effective, cfg.Timeout, cfg.Debug)
+}
+
+func findToolByName(tools []map[string]any, name string) (map[string]any, bool) {
+	for _, tool := range tools {
+		if toolName, _ := tool["name"].(string); toolName == name {
+			return tool, true
+		}
+	}
+	return nil, false
+}
+
+func resolveToolArguments(stdin io.Reader, cfg cliConfig) (map[string]any, error) {
+	switch {
+	case cfg.ToolInputFromStdin:
+		payload, err := io.ReadAll(stdin)
+		if err != nil {
+			return nil, fmt.Errorf("read --json-stdin payload: %w", err)
+		}
+		return parseJSONObject(string(payload))
+	case strings.HasPrefix(cfg.ToolInputJSON, "@"):
+		path := strings.TrimPrefix(cfg.ToolInputJSON, "@")
+		if path == "" {
+			return nil, errors.New("--json @file requires a non-empty path")
+		}
+		payload, err := os.ReadFile(path)
+		if err != nil {
+			return nil, fmt.Errorf("read JSON payload file %s: %w", path, err)
+		}
+		return parseJSONObject(string(payload))
+	default:
+		return parseJSONObject(cfg.ToolInputJSON)
+	}
+}
+
+func writeToolInspect(w io.Writer, tool map[string]any) error {
+	name, _ := tool["name"].(string)
+	description, _ := tool["description"].(string)
+	if _, err := fmt.Fprintf(w, "name: %s\n", name); err != nil {
+		return err
+	}
+	if _, err := fmt.Fprintf(w, "description: %s\n", description); err != nil {
+		return err
+	}
+	if _, err := fmt.Fprintln(w, "inputSchema:"); err != nil {
+		return err
+	}
+	if err := writeJSON(w, tool["inputSchema"]); err != nil {
+		return err
+	}
+	return nil
 }
 
 func logResolvedSession(w io.Writer, resolved bridge.ResolvedOptions) {
@@ -262,11 +355,11 @@ func formatAgentStatus(status agent.Status) string {
 func parseJSONObject(raw string) (map[string]any, error) {
 	var value any
 	if err := json.Unmarshal([]byte(raw), &value); err != nil {
-		return nil, fmt.Errorf("--json must be valid JSON: %w", err)
+		return nil, fmt.Errorf("JSON payload must be valid JSON: %w", err)
 	}
 	obj, ok := value.(map[string]any)
 	if !ok {
-		return nil, errors.New("--json must decode to a JSON object")
+		return nil, errors.New("JSON payload must decode to a JSON object")
 	}
 	return obj, nil
 }
