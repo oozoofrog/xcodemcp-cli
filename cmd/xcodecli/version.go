@@ -2,16 +2,23 @@ package main
 
 import "strings"
 
-var cliVersion = "dev"
+const sourceVersion = "v0.3.1"
+
+var cliVersion = sourceVersion
+var cliBuildChannel = "dev"
 
 func currentVersion() string {
 	version := strings.TrimSpace(cliVersion)
 	if version == "" {
-		return "dev"
+		return sourceVersion
 	}
 	return version
 }
 
 func versionLine() string {
-	return "xcodecli " + currentVersion()
+	line := "xcodecli " + currentVersion()
+	if strings.EqualFold(strings.TrimSpace(cliBuildChannel), "dev") {
+		line += " (dev)"
+	}
+	return line
 }

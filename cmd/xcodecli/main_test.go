@@ -57,13 +57,18 @@ func TestParseCLIVersionFlag(t *testing.T) {
 }
 
 func TestParseCLIWithoutArgsShowsHelp(t *testing.T) {
-	_, usage, err := parseCLI(nil)
-	if err != errUsageRequested {
-		t.Fatalf("err = %v, want errUsageRequested", err)
-	}
-	if !strings.Contains(usage, "START HERE:") {
-		t.Fatalf("usage missing root help banner: %q", usage)
-	}
+	withVersionState(t, "v1.2.3", "dev", func() {
+		_, usage, err := parseCLI(nil)
+		if err != errUsageRequested {
+			t.Fatalf("err = %v, want errUsageRequested", err)
+		}
+		if !strings.Contains(usage, "START HERE:") {
+			t.Fatalf("usage missing root help banner: %q", usage)
+		}
+		if !strings.HasPrefix(usage, "xcodecli v1.2.3 (dev)\n\n") {
+			t.Fatalf("usage missing version header: %q", usage)
+		}
+	})
 }
 
 func TestParseCLIDoctorJSON(t *testing.T) {
@@ -153,12 +158,14 @@ func TestParseCLIHelp(t *testing.T) {
 }
 
 func TestRootUsageIncludesHumanAndAgentGuidance(t *testing.T) {
-	usage := rootUsage()
-	for _, want := range []string{"START HERE:", "For humans:", "For agents:", "xcodecli version", "xcodecli agent guide", "xcodecli agent demo", "xcodecli doctor --json", "xcodecli tool inspect <name> --json"} {
-		if !strings.Contains(usage, want) {
-			t.Fatalf("root usage missing %q: %s", want, usage)
+	withVersionState(t, "v9.9.9", "dev", func() {
+		usage := rootUsage()
+		for _, want := range []string{"xcodecli v9.9.9 (dev)", "START HERE:", "For humans:", "For agents:", "xcodecli version", "xcodecli agent guide", "xcodecli agent demo", "xcodecli doctor --json", "xcodecli tool inspect <name> --json"} {
+			if !strings.Contains(usage, want) {
+				t.Fatalf("root usage missing %q: %s", want, usage)
+			}
 		}
-	}
+	})
 }
 
 func TestVersionUsageMentionsVersionFlag(t *testing.T) {
@@ -199,7 +206,7 @@ func TestRunRejectsInvalidBridgeOptions(t *testing.T) {
 }
 
 func TestRunVersionCommand(t *testing.T) {
-	withVersion(t, "v9.9.9", func() {
+	withVersionState(t, "v9.9.9", "release", func() {
 		var stdout strings.Builder
 		var stderr strings.Builder
 		code := run(context.Background(), []string{"version"}, strings.NewReader(""), &stdout, &stderr, os.Environ())
@@ -216,7 +223,7 @@ func TestRunVersionCommand(t *testing.T) {
 }
 
 func TestRunVersionFlag(t *testing.T) {
-	withVersion(t, "v1.2.3", func() {
+	withVersionState(t, "v1.2.3", "release", func() {
 		var stdout strings.Builder
 		var stderr strings.Builder
 		code := run(context.Background(), []string{"--version"}, strings.NewReader(""), &stdout, &stderr, os.Environ())
@@ -229,10 +236,35 @@ func TestRunVersionFlag(t *testing.T) {
 	})
 }
 
-func TestCurrentVersionFallsBackToDev(t *testing.T) {
-	withVersion(t, "", func() {
-		if got := currentVersion(); got != "dev" {
-			t.Fatalf("currentVersion() = %q, want dev", got)
+func TestRunHelpShowsVersionHeader(t *testing.T) {
+	withVersionState(t, "v2.0.0", "dev", func() {
+		var stdout strings.Builder
+		var stderr strings.Builder
+		code := run(context.Background(), []string{"help"}, strings.NewReader(""), &stdout, &stderr, os.Environ())
+		if code != 0 {
+			t.Fatalf("exit code = %d, want 0", code)
+		}
+		if !strings.HasPrefix(stdout.String(), "xcodecli v2.0.0 (dev)\n\n") {
+			t.Fatalf("stdout = %q, want version header", stdout.String())
+		}
+		if stderr.String() != "" {
+			t.Fatalf("stderr = %q, want empty stderr", stderr.String())
+		}
+	})
+}
+
+func TestCurrentVersionFallsBackToSourceVersion(t *testing.T) {
+	withVersionState(t, "", "dev", func() {
+		if got := currentVersion(); got != sourceVersion {
+			t.Fatalf("currentVersion() = %q, want %q", got, sourceVersion)
+		}
+	})
+}
+
+func TestVersionLineMarksDevBuilds(t *testing.T) {
+	withVersionState(t, "v1.2.3", "dev", func() {
+		if got := versionLine(); got != "xcodecli v1.2.3 (dev)" {
+			t.Fatalf("versionLine() = %q, want dev marker", got)
 		}
 	})
 }
@@ -678,10 +710,15 @@ func withStubs(t *testing.T, fn func()) {
 	fn()
 }
 
-func withVersion(t *testing.T, version string, fn func()) {
+func withVersionState(t *testing.T, version string, buildChannel string, fn func()) {
 	t.Helper()
-	old := cliVersion
+	oldVersion := cliVersion
+	oldBuildChannel := cliBuildChannel
 	cliVersion = version
-	defer func() { cliVersion = old }()
+	cliBuildChannel = buildChannel
+	defer func() {
+		cliVersion = oldVersion
+		cliBuildChannel = oldBuildChannel
+	}()
 	fn()
 }
