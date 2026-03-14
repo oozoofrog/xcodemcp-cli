@@ -2,7 +2,66 @@
 
 `xcodemcp` is a small Go wrapper around `xcrun mcpbridge` for local macOS use.
 
-## Build
+## Install
+
+### Homebrew
+
+Install from the shared `oozoofrog/tap` formula:
+
+```bash
+brew tap oozoofrog/tap
+brew install oozoofrog/tap/xcodemcp
+```
+
+Upgrade later with:
+
+```bash
+brew update
+brew upgrade oozoofrog/tap/xcodemcp
+```
+
+### Direct install from GitHub
+
+Install the current `main` branch directly from GitHub:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/oozoofrog/xcodemcp-cli/main/scripts/install.sh | bash
+```
+
+Install a specific tag or branch:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/oozoofrog/xcodemcp-cli/main/scripts/install.sh | bash -s -- --ref v0.2.1
+curl -fsSL https://raw.githubusercontent.com/oozoofrog/xcodemcp-cli/main/scripts/install.sh | bash -s -- --ref main
+```
+
+Install into a custom directory:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/oozoofrog/xcodemcp-cli/main/scripts/install.sh | bash -s -- --bin-dir "$HOME/.local/bin"
+```
+
+### Install from a local checkout
+
+Build and install from the checked-out repository:
+
+```bash
+./scripts/install.sh
+./scripts/install.sh --bin-dir "$HOME/.local/bin"
+```
+
+The install script:
+- builds from the current checkout when run locally
+- downloads and builds the requested GitHub ref when run via `curl | bash`
+- installs `xcodemcp` into `$HOME/.local/bin` by default
+- verifies that the installed binary runs successfully
+- checks whether your login shell can find `xcodemcp` on `PATH` and prints shell-specific guidance if it cannot
+
+The shared `oozoofrog/tap` repository can host multiple formulas and casks. `xcodemcp` is published there as `Formula/xcodemcp.rb`.
+
+If a release needs to be synced manually, see `/Volumes/eyedisk/develop/oozoofrog/xcodemcp-cli/docs/releasing.md` and `./scripts/release_homebrew.sh`.
+
+## Build from source
 
 ```bash
 ./scripts/build.sh
@@ -15,26 +74,6 @@ You can also override the package or output path:
 OUTPUT=.tmp/xcodemcp ./scripts/build.sh
 PACKAGE=./cmd/xcodemcp ./scripts/build.sh
 ```
-
-## Homebrew
-
-Install from the shared oozoofrog tap:
-
-```bash
-brew tap oozoofrog/tap
-brew install oozoofrog/tap/xcodemcp
-```
-
-Upgrade to the latest published version:
-
-```bash
-brew update
-brew upgrade oozoofrog/tap/xcodemcp
-```
-
-The `oozoofrog/tap` repository is a shared tap that can host multiple formulas and casks. `xcodemcp` is published there as `Formula/xcodemcp.rb`.
-
-If a release needs to be synced manually, see `/Volumes/eyedisk/develop/oozoofrog/xcodemcp-cli/docs/releasing.md` and `./scripts/release_homebrew.sh`.
 
 ## Usage
 
