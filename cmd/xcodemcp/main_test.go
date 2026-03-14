@@ -131,7 +131,7 @@ func TestParseCLIHelp(t *testing.T) {
 
 func TestRootUsageIncludesHumanAndAgentGuidance(t *testing.T) {
 	usage := rootUsage()
-	for _, want := range []string{"START HERE:", "For humans:", "For agents:", "xcodemcp agent demo", "xcodemcp doctor --json", "xcodemcp tool inspect <name> --json"} {
+	for _, want := range []string{"START HERE:", "For humans:", "For agents:", "xcodemcp agent guide", "xcodemcp agent demo", "xcodemcp doctor --json", "xcodemcp tool inspect <name> --json"} {
 		if !strings.Contains(usage, want) {
 			t.Fatalf("root usage missing %q: %s", want, usage)
 		}

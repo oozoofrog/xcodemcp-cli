@@ -46,6 +46,16 @@ Running `xcodemcp` with no arguments prints help. Use `bridge` for raw passthrou
 ./xcodemcp bridge --session-id 11111111-1111-1111-1111-111111111111
 ```
 
+Fastest workflow tutor for a real request:
+
+```bash
+./xcodemcp agent guide "build Unicody"
+./xcodemcp agent guide "read KeyboardState.swift"
+./xcodemcp agent guide --json
+```
+
+`agent guide` is read-only. It maps a user request to the recommended tool workflow, shows why that order is correct, and prints the exact next commands to run.
+
 Fastest safe live onboarding demo:
 
 ```bash
@@ -88,6 +98,7 @@ printf '{}' | ./xcodemcp tool call XcodeListWindows --json-stdin
 Inspect the LaunchAgent used by `tools` commands:
 
 ```bash
+./xcodemcp agent guide "build Unicody"
 ./xcodemcp agent demo
 ./xcodemcp agent status
 ./xcodemcp agent status --json
@@ -95,21 +106,37 @@ Inspect the LaunchAgent used by `tools` commands:
 ./xcodemcp agent uninstall
 ```
 
-## LLM agent example flow
+## LLM agent workflow playbook
 
-If you want one concrete end-to-end sequence for a shell-driven agent:
+Start here when you already know the task:
 
 ```bash
-./xcodemcp agent demo
-./xcodemcp tool inspect XcodeRead --json
-./xcodemcp tool call XcodeLS --json '{"tabIdentifier":"<tabIdentifier from above>","path":""}'
-./xcodemcp tool call XcodeRead --json '{"tabIdentifier":"<tabIdentifier from above>","filePath":"<path from XcodeLS>"}'
+./xcodemcp agent guide "build Unicody"
+./xcodemcp agent guide "run tests for Unicody"
+./xcodemcp agent guide "read KeyboardState.swift"
+./xcodemcp agent guide "search for AdManager"
+./xcodemcp agent guide "update KeyboardState.swift"
+./xcodemcp agent guide "diagnose build errors"
 ```
 
 Notes:
-- Many Xcode MCP tools require a `tabIdentifier`.
-- `XcodeListWindows` is the normal way to discover that value.
-- `agent demo` runs `XcodeListWindows` safely and shows the next commands with placeholders.
+- `agent guide` is the fastest way to learn the right tool sequence for a concrete request.
+- `agent demo` is the safest way to discover live windows and tool availability before you pick a workflow.
+- Many Xcode MCP tools require a `tabIdentifier`; both `agent guide` and `agent demo` help you understand when and why `XcodeListWindows` comes first.
+- `tool inspect` is still available, but it should usually be a fallback for schema reassurance rather than the first step.
+
+## Manual low-level flow
+
+If you want the raw building blocks instead of guidance:
+
+```bash
+./xcodemcp tools list
+./xcodemcp tool inspect XcodeListWindows --json
+./xcodemcp tool call XcodeListWindows --json '{}'
+./xcodemcp tool call BuildProject --json '{"tabIdentifier":"<tabIdentifier from above>"}'
+```
+
+After `agent guide` and `agent demo`, the next likely usability improvement is a higher-level task command. This repository does **not** add that abstraction yet.
 
 ## Agent onboarding
 
