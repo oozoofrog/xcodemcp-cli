@@ -160,7 +160,7 @@ func TestParseCLIHelp(t *testing.T) {
 func TestRootUsageIncludesHumanAndAgentGuidance(t *testing.T) {
 	withVersionState(t, "v9.9.9", "dev", func() {
 		usage := rootUsage()
-		for _, want := range []string{"xcodecli v9.9.9 (dev)", "START HERE:", "For humans:", "For agents:", "xcodecli version", "xcodecli agent guide", "xcodecli agent demo", "xcodecli doctor --json", "xcodecli tool inspect <name> --json"} {
+		for _, want := range []string{"xcodecli v9.9.9 (dev)", "START HERE:", "For humans:", "For agents:", "xcodecli version", "xcodecli agent guide", "xcodecli agent demo", "xcodecli doctor --json", "xcodecli mcp codex", "xcodecli tool inspect <name> --json"} {
 			if !strings.Contains(usage, want) {
 				t.Fatalf("root usage missing %q: %s", want, usage)
 			}
@@ -677,6 +677,8 @@ func withStubs(t *testing.T, fn func()) {
 	oldConfig := defaultAgentConfigFunc
 	oldList := defaultToolsListFunc
 	oldCall := defaultToolCallFunc
+	oldExecutablePath := defaultExecutablePathFunc
+	oldMCPRunner := defaultMCPCommandRunner
 	oldStatus := defaultAgentStatusFunc
 	oldStop := defaultAgentStopFunc
 	oldUninstall := defaultAgentUninstallFunc
@@ -691,6 +693,12 @@ func withStubs(t *testing.T, fn func()) {
 	defaultToolCallFunc = func(ctx context.Context, cfg agent.Config, req agent.Request, toolName string, arguments map[string]any) (mcp.CallResult, error) {
 		return mcp.CallResult{}, errors.New("unexpected tool call")
 	}
+	defaultExecutablePathFunc = func() (string, error) {
+		return "/tmp/xcodecli-test", nil
+	}
+	defaultMCPCommandRunner = func(ctx context.Context, name string, args []string) (externalCommandResult, error) {
+		return externalCommandResult{}, errors.New("unexpected mcp config command")
+	}
 	defaultAgentStatusFunc = func(ctx context.Context, cfg agent.Config) (agent.Status, error) {
 		return agent.Status{}, nil
 	}
@@ -701,6 +709,8 @@ func withStubs(t *testing.T, fn func()) {
 		defaultAgentConfigFunc = oldConfig
 		defaultToolsListFunc = oldList
 		defaultToolCallFunc = oldCall
+		defaultExecutablePathFunc = oldExecutablePath
+		defaultMCPCommandRunner = oldMCPRunner
 		defaultAgentStatusFunc = oldStatus
 		defaultAgentStopFunc = oldStop
 		defaultAgentUninstallFunc = oldUninstall

@@ -114,6 +114,23 @@ Run environment diagnostics:
 MCP_XCODE_PID=12345 ./xcodecli doctor --json
 ```
 
+Generate MCP registration commands for supported clients:
+
+```bash
+./xcodecli mcp codex
+./xcodecli mcp claude
+./xcodecli mcp gemini
+./xcodecli mcp codex --write
+./xcodecli mcp claude --write --json
+```
+
+Notes:
+- `mcp config` always targets `xcodecli bridge`.
+- `xcodecli mcp codex|claude|gemini` are shorthand aliases for `xcodecli mcp config --client ...`.
+- Output-only mode prints a ready-to-paste registration command and does **not** create or reuse `xcodecli`'s persistent session file.
+- `--write` delegates registration to the target client CLI instead of editing that client's config files directly.
+- Gemini defaults to `--scope user` so it does not write `.gemini/settings.json` into the current project unless you explicitly choose `--scope project`.
+
 List tools through the MCP bridge:
 
 ```bash

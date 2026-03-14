@@ -101,6 +101,8 @@ func run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.
 			return 0
 		}
 		return 1
+	case commandMCPConfig:
+		return runMCPConfig(ctx, cfg, stdout, stderr)
 	case commandBridge:
 		resolved, err := resolveEffectiveOptions(env, cfg)
 		if err != nil {
