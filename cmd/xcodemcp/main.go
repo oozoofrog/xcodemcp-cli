@@ -7,8 +7,11 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/signal"
 	"runtime"
+	"syscall"
 
+	"github.com/oozoofrog/xcodemcp-cli/internal/agent"
 	"github.com/oozoofrog/xcodemcp-cli/internal/bridge"
 	"github.com/oozoofrog/xcodemcp-cli/internal/doctor"
 	"github.com/oozoofrog/xcodemcp-cli/internal/mcp"
@@ -17,6 +20,15 @@ import (
 var defaultBridgeCommand = bridge.Command{Path: "xcrun", Args: []string{"mcpbridge"}}
 var defaultMCPCommand = mcp.Command{Path: "xcrun", Args: []string{"mcpbridge"}}
 var defaultSessionPathFunc = bridge.DefaultSessionFilePath
+var defaultAgentConfigFunc = func(command mcp.Command, env []string, errOut io.Writer) (agent.Config, error) {
+	return agent.DefaultConfig(command, env, errOut)
+}
+var defaultToolsListFunc = agent.ListTools
+var defaultToolCallFunc = agent.CallTool
+var defaultAgentStatusFunc = agent.StatusInfo
+var defaultAgentStopFunc = agent.Stop
+var defaultAgentUninstallFunc = agent.Uninstall
+var defaultAgentRunFunc = agent.RunServer
 
 func main() {
 	os.Exit(run(context.Background(), os.Args[1:], os.Stdin, os.Stdout, os.Stderr, os.Environ()))
@@ -60,14 +72,26 @@ func run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.
 		logResolvedSession(stderr, resolved)
 	}
 
+	agentCfg, err := defaultAgentConfigFunc(defaultMCPCommand, env, stderr)
+	if err != nil {
+		fmt.Fprintf(stderr, "xcodemcp: %v\n", err)
+		return 1
+	}
+	if cfg.IdleTimeout > 0 {
+		agentCfg.IdleTimeout = cfg.IdleTimeout
+	}
+
 	switch cfg.Command {
 	case commandDoctor:
+		agentStatus, agentStatusErr := defaultAgentStatusFunc(ctx, agentCfg)
 		report := doctor.NewInspector().Run(ctx, doctor.Options{
-			BaseEnv:       env,
-			XcodePID:      effective.XcodePID,
-			SessionID:     effective.SessionID,
-			SessionSource: resolved.SessionSource,
-			SessionPath:   resolved.SessionPath,
+			BaseEnv:        env,
+			XcodePID:       effective.XcodePID,
+			SessionID:      effective.SessionID,
+			SessionSource:  resolved.SessionSource,
+			SessionPath:    resolved.SessionPath,
+			AgentStatus:    &agentStatus,
+			AgentStatusErr: agentStatusErr,
 		})
 		fmt.Fprint(stdout, report.String())
 		if report.Success() {
@@ -98,14 +122,8 @@ func run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.
 			fmt.Fprintf(stderr, "xcodemcp: invalid MCP options: %v\n", err)
 			return 1
 		}
-		cmdCtx, cancel := context.WithTimeout(ctx, cfg.Timeout)
-		defer cancel()
-		tools, err := mcp.ListTools(cmdCtx, mcp.Config{
-			Command: defaultMCPCommand,
-			Env:     bridge.ApplyEnvOverrides(env, effective),
-			Debug:   cfg.Debug,
-			ErrOut:  stderr,
-		})
+		request := agentRequest(env, effective, cfg)
+		tools, err := defaultToolsListFunc(ctx, agentCfg, request)
 		if err != nil {
 			fmt.Fprintf(stderr, "xcodemcp: %v\n", err)
 			return 1
@@ -137,14 +155,8 @@ func run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.
 			fmt.Fprintf(stderr, "xcodemcp: %v\n", err)
 			return 1
 		}
-		cmdCtx, cancel := context.WithTimeout(ctx, cfg.Timeout)
-		defer cancel()
-		result, err := mcp.CallTool(cmdCtx, mcp.Config{
-			Command: defaultMCPCommand,
-			Env:     bridge.ApplyEnvOverrides(env, effective),
-			Debug:   cfg.Debug,
-			ErrOut:  stderr,
-		}, cfg.ToolName, arguments)
+		request := agentRequest(env, effective, cfg)
+		result, err := defaultToolCallFunc(ctx, agentCfg, request, cfg.ToolName, arguments)
 		if err != nil {
 			fmt.Fprintf(stderr, "xcodemcp: %v\n", err)
 			return 1
@@ -157,10 +169,44 @@ func run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.
 			return 1
 		}
 		return 0
+	case commandAgentStatus:
+		status, err := defaultAgentStatusFunc(ctx, agentCfg)
+		if err != nil {
+			fmt.Fprintf(stderr, "xcodemcp: %v\n", err)
+			return 1
+		}
+		fmt.Fprint(stdout, formatAgentStatus(status))
+		return 0
+	case commandAgentStop:
+		if err := defaultAgentStopFunc(ctx, agentCfg); err != nil {
+			fmt.Fprintf(stderr, "xcodemcp: %v\n", err)
+			return 1
+		}
+		fmt.Fprintln(stdout, "stopped LaunchAgent process if it was running")
+		return 0
+	case commandAgentUninstall:
+		if err := defaultAgentUninstallFunc(ctx, agentCfg); err != nil {
+			fmt.Fprintf(stderr, "xcodemcp: %v\n", err)
+			return 1
+		}
+		fmt.Fprintln(stdout, "removed LaunchAgent plist and local agent runtime files")
+		return 0
+	case commandAgentRun:
+		signalCtx, cancel := signal.NotifyContext(ctx, syscall.SIGINT, syscall.SIGTERM, syscall.SIGHUP)
+		defer cancel()
+		if err := defaultAgentRunFunc(signalCtx, agentCfg); err != nil {
+			fmt.Fprintf(stderr, "xcodemcp: %v\n", err)
+			return 1
+		}
+		return 0
 	default:
 		fmt.Fprintf(stderr, "xcodemcp: unsupported command %q\n", cfg.Command)
 		return 1
 	}
+}
+
+func agentRequest(env []string, effective bridge.EnvOptions, cfg cliConfig) agent.Request {
+	return agent.BuildRequest(env, effective, cfg.Timeout, cfg.Debug)
 }
 
 func logResolvedSession(w io.Writer, resolved bridge.ResolvedOptions) {
@@ -174,6 +220,43 @@ func logResolvedSession(w io.Writer, resolved bridge.ResolvedOptions) {
 	case bridge.SessionSourceGenerated:
 		fmt.Fprintf(w, "[debug] generated persistent MCP_XCODE_SESSION_ID %s at %s\n", resolved.SessionID, resolved.SessionPath)
 	}
+}
+
+func formatAgentStatus(status agent.Status) string {
+	binaryLine := status.RegisteredBinary
+	if binaryLine == "" {
+		binaryLine = "not installed"
+	}
+	matchText := "n/a"
+	if status.RegisteredBinary != "" && status.CurrentBinary != "" {
+		if status.BinaryPathMatches {
+			matchText = "yes"
+		} else {
+			matchText = "no"
+		}
+	}
+	runningText := "no"
+	if status.Running {
+		runningText = "yes"
+	}
+	socketText := "no"
+	if status.SocketReachable {
+		socketText = "yes"
+	}
+	return fmt.Sprintf("xcodemcp agent\n\nlabel: %s\nplist installed: %t\nplist path: %s\nregistered binary: %s\ncurrent binary: %s\nbinary matches: %s\nsocket path: %s\nsocket reachable: %s\nrunning: %s\npid: %d\nidle timeout: %s\nbackend sessions: %d\n",
+		status.Label,
+		status.PlistInstalled,
+		status.PlistPath,
+		binaryLine,
+		status.CurrentBinary,
+		matchText,
+		status.SocketPath,
+		socketText,
+		runningText,
+		status.PID,
+		status.IdleTimeout,
+		status.BackendSessions,
+	)
 }
 
 func parseJSONObject(raw string) (map[string]any, error) {

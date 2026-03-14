@@ -75,48 +75,55 @@ type toolsListResult struct {
 }
 
 func ListTools(ctx context.Context, cfg Config) ([]map[string]any, error) {
-	s, err := startSession(ctx, cfg)
+	client, err := NewClient(cfg)
 	if err != nil {
 		return nil, err
 	}
-	defer func() { _ = s.close() }()
+	defer func() { _ = client.Close() }()
 
-	var tools []map[string]any
-	var cursor string
-	for {
-		params := map[string]any{}
-		if cursor != "" {
-			params["cursor"] = cursor
-		}
-		var result toolsListResult
-		if err := s.request("tools/list", params, &result); err != nil {
-			return nil, err
-		}
-		tools = append(tools, result.Tools...)
-		if result.NextCursor == "" {
-			return tools, nil
-		}
-		cursor = result.NextCursor
+	type result struct {
+		tools []map[string]any
+		err   error
+	}
+	resultCh := make(chan result, 1)
+	go func() {
+		tools, callErr := client.ListTools()
+		resultCh <- result{tools: tools, err: callErr}
+	}()
+
+	select {
+	case res := <-resultCh:
+		return res.tools, res.err
+	case <-ctx.Done():
+		_ = client.Close()
+		return nil, ctx.Err()
 	}
 }
 
 func CallTool(ctx context.Context, cfg Config, name string, arguments map[string]any) (CallResult, error) {
-	s, err := startSession(ctx, cfg)
+	client, err := NewClient(cfg)
 	if err != nil {
 		return CallResult{}, err
 	}
-	defer func() { _ = s.close() }()
+	defer func() { _ = client.Close() }()
 
-	var result map[string]any
-	if err := s.request("tools/call", map[string]any{
-		"name":      name,
-		"arguments": arguments,
-	}, &result); err != nil {
-		return CallResult{}, err
+	type result struct {
+		callResult CallResult
+		err        error
 	}
+	resultCh := make(chan result, 1)
+	go func() {
+		callResult, callErr := client.CallTool(name, arguments)
+		resultCh <- result{callResult: callResult, err: callErr}
+	}()
 
-	isError, _ := result["isError"].(bool)
-	return CallResult{Result: result, IsError: isError}, nil
+	select {
+	case res := <-resultCh:
+		return res.callResult, res.err
+	case <-ctx.Done():
+		_ = client.Close()
+		return CallResult{}, ctx.Err()
+	}
 }
 
 func startSession(ctx context.Context, cfg Config) (*session, error) {

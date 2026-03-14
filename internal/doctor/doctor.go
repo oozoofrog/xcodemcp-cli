@@ -12,6 +12,7 @@ import (
 	"time"
 	"unicode"
 
+	"github.com/oozoofrog/xcodemcp-cli/internal/agent"
 	"github.com/oozoofrog/xcodemcp-cli/internal/bridge"
 )
 
@@ -35,11 +36,13 @@ type Report struct {
 }
 
 type Options struct {
-	BaseEnv       []string
-	XcodePID      string
-	SessionID     string
-	SessionSource bridge.SessionSource
-	SessionPath   string
+	BaseEnv        []string
+	XcodePID       string
+	SessionID      string
+	SessionSource  bridge.SessionSource
+	SessionPath    string
+	AgentStatus    *agent.Status
+	AgentStatusErr error
 }
 
 type Process struct {
@@ -196,6 +199,16 @@ func (i Inspector) Run(ctx context.Context, opts Options) Report {
 			checks = append(checks, Check{Name: "spawn smoke test", Status: StatusFail, Detail: formatCommandFailure(result, runErr)})
 		} else {
 			checks = append(checks, Check{Name: "spawn smoke test", Status: StatusOK, Detail: fmt.Sprintf("exit 0 in %s", time.Since(startedAt).Round(10*time.Millisecond))})
+		}
+	}
+
+	if opts.AgentStatusErr != nil {
+		checks = append(checks, Check{Name: "LaunchAgent status", Status: StatusInfo, Detail: fmt.Sprintf("unavailable: %v", opts.AgentStatusErr)})
+	} else if opts.AgentStatus != nil {
+		checks = append(checks, Check{Name: "LaunchAgent plist", Status: StatusInfo, Detail: fmt.Sprintf("installed=%t path=%s", opts.AgentStatus.PlistInstalled, opts.AgentStatus.PlistPath)})
+		checks = append(checks, Check{Name: "LaunchAgent socket", Status: StatusInfo, Detail: fmt.Sprintf("reachable=%t path=%s", opts.AgentStatus.SocketReachable, opts.AgentStatus.SocketPath)})
+		if opts.AgentStatus.RegisteredBinary != "" || opts.AgentStatus.CurrentBinary != "" {
+			checks = append(checks, Check{Name: "LaunchAgent binary registration", Status: StatusInfo, Detail: fmt.Sprintf("registered=%s | current=%s | match=%t", opts.AgentStatus.RegisteredBinary, opts.AgentStatus.CurrentBinary, opts.AgentStatus.BinaryPathMatches)})
 		}
 	}
 

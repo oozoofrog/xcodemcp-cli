@@ -31,6 +31,14 @@ List tools through the MCP bridge:
 ./xcodemcp tools list --json --timeout 30s
 ```
 
+Inspect the LaunchAgent used by `tools` commands:
+
+```bash
+./xcodemcp agent status
+./xcodemcp agent stop
+./xcodemcp agent uninstall
+```
+
 Call a single tool with JSON arguments:
 
 ```bash
@@ -50,5 +58,7 @@ Call a single tool with JSON arguments:
 - `--session-id` overrides `MCP_XCODE_SESSION_ID`.
 - If no `--session-id` flag or `MCP_XCODE_SESSION_ID` environment variable is provided, `xcodemcp` automatically creates and reuses a persistent session ID at `~/Library/Application Support/xcodemcp/session-id`.
 - In bridge mode, **stdout is protocol-only**. Wrapper logs and diagnostics go to stderr.
-- Convenience commands (`tools list`, `tool call`) use newline-delimited JSON MCP transport with a default `30s` timeout.
+- Convenience commands (`tools list`, `tool call`) automatically install and bootstrap a per-user LaunchAgent at `~/Library/LaunchAgents/io.oozoofrog.xcodemcp.plist`.
+- The LaunchAgent talks to `xcrun mcpbridge` over a long-lived local Unix socket and shuts itself down after `10m` of idleness by default.
+- Convenience commands use newline-delimited JSON transport with a default `30s` timeout.
 - `tool call --json` currently accepts only an inline JSON object string.

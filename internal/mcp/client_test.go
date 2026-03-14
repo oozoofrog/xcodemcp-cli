@@ -88,7 +88,7 @@ func TestListToolsTimesOut(t *testing.T) {
 		Command: helperCommand("timeout"),
 		Env:     helperEnv(),
 	})
-	if err == nil || !strings.Contains(err.Error(), "wait for tools/list response") {
+	if err == nil || !strings.Contains(err.Error(), "context deadline exceeded") {
 		t.Fatalf("expected timeout-related error, got %v", err)
 	}
 }
