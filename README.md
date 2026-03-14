@@ -5,7 +5,15 @@
 ## Build
 
 ```bash
-go build ./cmd/xcodemcp
+./scripts/build.sh
+./scripts/build.sh .tmp/xcodemcp
+```
+
+You can also override the package or output path:
+
+```bash
+OUTPUT=.tmp/xcodemcp ./scripts/build.sh
+PACKAGE=./cmd/xcodemcp ./scripts/build.sh
 ```
 
 ## Usage
