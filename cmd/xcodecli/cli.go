@@ -531,7 +531,9 @@ func newFlagSet(name string) *flag.FlagSet {
 }
 
 func rootUsage() string {
-	return `xcodecli wraps xcrun mcpbridge for local macOS use.
+	return versionLine() + `
+
+xcodecli wraps xcrun mcpbridge for local macOS use.
 
 START HERE:
   For humans:
