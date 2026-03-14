@@ -1,0 +1,235 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+SOURCE_REPO="oozoofrog/xcodemcp-cli"
+export HOMEBREW_NO_AUTO_UPDATE=1
+export HOMEBREW_NO_INSTALL_CLEANUP=1
+
+TAP_REPO="oozoofrog/homebrew-tap"
+FORMULA_NAME="xcodemcp"
+DEFAULT_CLONE_ROOT="${TMPDIR:-/tmp}"
+
+usage() {
+  cat <<USAGE
+Usage:
+  ./scripts/release_homebrew.sh <tag> [--tap-dir PATH] [--push] [--dry-run]
+
+Examples:
+  ./scripts/release_homebrew.sh v0.2.0 --tap-dir .tmp/homebrew-tap --dry-run
+  ./scripts/release_homebrew.sh v0.2.1 --push
+
+Behavior:
+  - Downloads the GitHub source tarball for the given tag
+  - Computes sha256 and writes Formula/xcodemcp.rb in the tap repo
+  - Runs Homebrew audit and build-from-source validation
+  - Commits the tap change locally unless --dry-run is set
+  - Pushes the tap commit only when --push is set
+
+Environment:
+  HOMEBREW_TAP_GITHUB_TOKEN  Optional. Used for cloning/pushing the tap over HTTPS.
+USAGE
+}
+
+fail() {
+  echo "[homebrew-release] $*" >&2
+  exit 1
+}
+
+log() {
+  echo "[homebrew-release] $*"
+}
+
+require_cmd() {
+  command -v "$1" >/dev/null 2>&1 || fail "required command not found: $1"
+}
+
+clone_tap_repo() {
+  local target_dir="$1"
+  if [[ -n "${HOMEBREW_TAP_GITHUB_TOKEN:-}" ]]; then
+    git clone "https://x-access-token:${HOMEBREW_TAP_GITHUB_TOKEN}@github.com/${TAP_REPO}.git" "$target_dir"
+  elif command -v gh >/dev/null 2>&1; then
+    gh repo clone "$TAP_REPO" "$target_dir"
+  else
+    git clone "git@github.com:${TAP_REPO}.git" "$target_dir"
+  fi
+}
+
+ensure_git_identity() {
+  local tap_dir="$1"
+  if ! git -C "$tap_dir" config user.name >/dev/null; then
+    git -C "$tap_dir" config user.name "github-actions[bot]"
+  fi
+  if ! git -C "$tap_dir" config user.email >/dev/null; then
+    git -C "$tap_dir" config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+  fi
+}
+
+render_formula() {
+  local version="$1"
+  local sha256="$2"
+  cat <<FORMULA
+class Xcodemcp < Formula
+  desc "Go CLI wrapper around xcrun mcpbridge"
+  homepage "https://github.com/${SOURCE_REPO}"
+  url "https://github.com/${SOURCE_REPO}/archive/refs/tags/v${version}.tar.gz"
+  sha256 "${sha256}"
+  license "MIT"
+
+  depends_on "go" => :build
+
+  def install
+    system "go", "build", *std_go_args(output: bin/"xcodemcp"), "./cmd/xcodemcp"
+  end
+
+  test do
+    output = shell_output("#{bin}/xcodemcp help")
+    assert_match "xcodemcp wraps xcrun mcpbridge", output
+  end
+end
+FORMULA
+}
+
+TAG=""
+TAP_DIR=""
+PUSH=0
+DRY_RUN=0
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --tap-dir)
+      [[ $# -ge 2 ]] || fail "--tap-dir requires a path"
+      TAP_DIR="$2"
+      shift 2
+      ;;
+    --push)
+      PUSH=1
+      shift
+      ;;
+    --dry-run)
+      DRY_RUN=1
+      shift
+      ;;
+    -h|--help)
+      usage
+      exit 0
+      ;;
+    -* )
+      fail "unknown flag: $1"
+      ;;
+    *)
+      if [[ -n "$TAG" ]]; then
+        fail "multiple tags provided"
+      fi
+      TAG="$1"
+      shift
+      ;;
+  esac
+done
+
+[[ -n "$TAG" ]] || { usage; fail "missing required tag"; }
+[[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || fail "tag must look like vMAJOR.MINOR.PATCH"
+VERSION="${TAG#v}"
+
+require_cmd curl
+require_cmd git
+require_cmd shasum
+require_cmd brew
+
+TAP_NAME="oozoofrog/tap"
+AUTO_CLONED=0
+if [[ -z "$TAP_DIR" ]]; then
+  TAP_DIR="$(mktemp -d "${DEFAULT_CLONE_ROOT%/}/xcodemcp-homebrew-tap-XXXXXX")"
+  AUTO_CLONED=1
+  log "cloning ${TAP_REPO} into ${TAP_DIR}"
+  clone_tap_repo "$TAP_DIR"
+fi
+
+[[ -d "$TAP_DIR/.git" ]] || fail "tap directory is not a git repository: $TAP_DIR"
+mkdir -p "$TAP_DIR/Formula"
+FORMULA_PATH="$TAP_DIR/Formula/${FORMULA_NAME}.rb"
+TARBALL_URL="https://github.com/${SOURCE_REPO}/archive/refs/tags/${TAG}.tar.gz"
+
+log "computing sha256 for ${TARBALL_URL}"
+SHA256="$(curl -fsSL "$TARBALL_URL" | shasum -a 256 | awk '{print $1}')"
+[[ -n "$SHA256" ]] || fail "failed to compute sha256"
+
+log "writing ${FORMULA_PATH}"
+render_formula "$VERSION" "$SHA256" > "$FORMULA_PATH"
+
+VALIDATION_TAP_ADDED=0
+if ! brew tap | grep -qx "$TAP_NAME"; then
+  log "tapping ${TAP_NAME} for validation"
+  brew tap "$TAP_NAME"
+  VALIDATION_TAP_ADDED=1
+fi
+
+VALIDATION_TAP_REPO="$(brew --repo "$TAP_NAME")"
+VALIDATION_FORMULA_DIR="$VALIDATION_TAP_REPO/Formula"
+VALIDATION_FORMULA_PATH="$VALIDATION_FORMULA_DIR/${FORMULA_NAME}.rb"
+BACKUP_FORMULA_PATH=""
+mkdir -p "$VALIDATION_FORMULA_DIR"
+if [[ -f "$VALIDATION_FORMULA_PATH" ]]; then
+  BACKUP_FORMULA_PATH="$(mktemp "${DEFAULT_CLONE_ROOT%/}/xcodemcp-formula-backup-XXXXXX.rb")"
+  cp "$VALIDATION_FORMULA_PATH" "$BACKUP_FORMULA_PATH"
+fi
+cp "$FORMULA_PATH" "$VALIDATION_FORMULA_PATH"
+
+cleanup_validation_tap() {
+  if [[ -n "$BACKUP_FORMULA_PATH" && -f "$BACKUP_FORMULA_PATH" ]]; then
+    cp "$BACKUP_FORMULA_PATH" "$VALIDATION_FORMULA_PATH"
+    rm -f "$BACKUP_FORMULA_PATH"
+  else
+    rm -f "$VALIDATION_FORMULA_PATH"
+  fi
+  if [[ "$VALIDATION_TAP_ADDED" -eq 1 ]]; then
+    brew untap "$TAP_NAME" >/dev/null 2>&1 || true
+  fi
+}
+trap cleanup_validation_tap EXIT
+
+log "running brew audit"
+brew audit --strict "$TAP_NAME/$FORMULA_NAME"
+
+log "running brew install --build-from-source"
+WAS_INSTALLED=0
+if brew list --formula "$FORMULA_NAME" >/dev/null 2>&1; then
+  WAS_INSTALLED=1
+  brew reinstall --build-from-source "$TAP_NAME/$FORMULA_NAME"
+else
+  brew install --build-from-source "$TAP_NAME/$FORMULA_NAME"
+fi
+
+log "running formula smoke test"
+"$(brew --prefix)/bin/${FORMULA_NAME}" help >/dev/null
+brew test "$TAP_NAME/$FORMULA_NAME"
+
+if [[ "$WAS_INSTALLED" -eq 0 ]]; then
+  log "cleaning up temporary Homebrew install"
+  brew uninstall --force "$FORMULA_NAME"
+fi
+
+if [[ -z "$(git -C "$TAP_DIR" status --short -- "Formula/${FORMULA_NAME}.rb")" ]]; then
+  log "formula already up to date"
+else
+  if [[ "$DRY_RUN" -eq 1 ]]; then
+    log "dry-run enabled; leaving formula changes uncommitted in ${TAP_DIR}"
+  else
+    ensure_git_identity "$TAP_DIR"
+    git -C "$TAP_DIR" add "Formula/${FORMULA_NAME}.rb"
+    git -C "$TAP_DIR" commit -m "${FORMULA_NAME} ${VERSION}"
+    if [[ "$PUSH" -eq 1 ]]; then
+      log "rebasing tap branch before push"
+      git -C "$TAP_DIR" pull --rebase origin main
+      log "pushing tap update"
+      git -C "$TAP_DIR" push origin HEAD:main
+    else
+      log "tap commit created locally (not pushed)"
+    fi
+  fi
+fi
+
+log "done"
+log "tap directory: ${TAP_DIR}"
+if [[ "$AUTO_CLONED" -eq 1 && "$DRY_RUN" -eq 1 ]]; then
+  log "auto-cloned tap directory was kept for inspection because --dry-run was used"
+fi
