@@ -20,9 +20,9 @@ Examples:
 
 Behavior:
   - Downloads the GitHub source tarball for the given tag
-  - Computes sha256 and writes Formula/xcodemcp.rb in the tap repo
+  - Computes sha256 and writes Formula/xcodemcp.rb in the shared tap repo
   - Runs Homebrew audit and build-from-source validation
-  - Commits the tap change locally unless --dry-run is set
+  - Commits only the xcodemcp formula change locally unless --dry-run is set
   - Pushes the tap commit only when --push is set
 
 Environment:
@@ -62,6 +62,24 @@ ensure_git_identity() {
   if ! git -C "$tap_dir" config user.email >/dev/null; then
     git -C "$tap_dir" config user.email "41898282+github-actions[bot]@users.noreply.github.com"
   fi
+}
+
+ensure_tap_repo_safe() {
+  local tap_dir="$1"
+  local formula_rel="Formula/${FORMULA_NAME}.rb"
+  local status
+  status="$(git -C "$tap_dir" status --short)"
+  if [[ -z "$status" ]]; then
+    return 0
+  fi
+
+  while IFS= read -r line; do
+    [[ -z "$line" ]] && continue
+    local path_part="${line:3}"
+    if [[ "$path_part" != "$formula_rel" ]]; then
+      fail "tap repo has unrelated local changes: $line"
+    fi
+  done <<< "$status"
 }
 
 render_formula() {
@@ -145,6 +163,7 @@ if [[ -z "$TAP_DIR" ]]; then
 fi
 
 [[ -d "$TAP_DIR/.git" ]] || fail "tap directory is not a git repository: $TAP_DIR"
+ensure_tap_repo_safe "$TAP_DIR"
 mkdir -p "$TAP_DIR/Formula"
 FORMULA_PATH="$TAP_DIR/Formula/${FORMULA_NAME}.rb"
 TARBALL_URL="https://github.com/${SOURCE_REPO}/archive/refs/tags/${TAG}.tar.gz"
@@ -153,7 +172,7 @@ log "computing sha256 for ${TARBALL_URL}"
 SHA256="$(curl -fsSL "$TARBALL_URL" | shasum -a 256 | awk '{print $1}')"
 [[ -n "$SHA256" ]] || fail "failed to compute sha256"
 
-log "writing ${FORMULA_PATH}"
+log "writing ${FORMULA_PATH} inside shared tap repo ${TAP_DIR}"
 render_formula "$VERSION" "$SHA256" > "$FORMULA_PATH"
 
 VALIDATION_TAP_ADDED=0
@@ -165,6 +184,7 @@ fi
 
 VALIDATION_TAP_REPO="$(brew --repo "$TAP_NAME")"
 VALIDATION_FORMULA_DIR="$VALIDATION_TAP_REPO/Formula"
+log "validation tap repo: ${VALIDATION_TAP_REPO}"
 VALIDATION_FORMULA_PATH="$VALIDATION_FORMULA_DIR/${FORMULA_NAME}.rb"
 BACKUP_FORMULA_PATH=""
 mkdir -p "$VALIDATION_FORMULA_DIR"
@@ -172,9 +192,11 @@ if [[ -f "$VALIDATION_FORMULA_PATH" ]]; then
   BACKUP_FORMULA_PATH="$(mktemp "${DEFAULT_CLONE_ROOT%/}/xcodemcp-formula-backup-XXXXXX.rb")"
   cp "$VALIDATION_FORMULA_PATH" "$BACKUP_FORMULA_PATH"
 fi
+log "temporarily validating only ${VALIDATION_FORMULA_PATH}"
 cp "$FORMULA_PATH" "$VALIDATION_FORMULA_PATH"
 
 cleanup_validation_tap() {
+  log "restoring validation copy of ${VALIDATION_FORMULA_PATH}"
   if [[ -n "$BACKUP_FORMULA_PATH" && -f "$BACKUP_FORMULA_PATH" ]]; then
     cp "$BACKUP_FORMULA_PATH" "$VALIDATION_FORMULA_PATH"
     rm -f "$BACKUP_FORMULA_PATH"
@@ -215,6 +237,7 @@ else
     log "dry-run enabled; leaving formula changes uncommitted in ${TAP_DIR}"
   else
     ensure_git_identity "$TAP_DIR"
+    ensure_tap_repo_safe "$TAP_DIR"
     git -C "$TAP_DIR" add "Formula/${FORMULA_NAME}.rb"
     git -C "$TAP_DIR" commit -m "${FORMULA_NAME} ${VERSION}"
     if [[ "$PUSH" -eq 1 ]]; then

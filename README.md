@@ -18,7 +18,7 @@ PACKAGE=./cmd/xcodemcp ./scripts/build.sh
 
 ## Homebrew
 
-Install from the personal tap:
+Install from the shared oozoofrog tap:
 
 ```bash
 brew tap oozoofrog/tap
@@ -31,6 +31,8 @@ Upgrade to the latest published version:
 brew update
 brew upgrade oozoofrog/tap/xcodemcp
 ```
+
+The `oozoofrog/tap` repository is a shared tap that can host multiple formulas and casks. `xcodemcp` is published there as `Formula/xcodemcp.rb`.
 
 If a release needs to be synced manually, see `/Volumes/eyedisk/develop/oozoofrog/xcodemcp-cli/docs/releasing.md` and `./scripts/release_homebrew.sh`.
 

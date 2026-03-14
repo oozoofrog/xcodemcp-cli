@@ -1,4 +1,4 @@
-name: Homebrew Release
+name: Homebrew Release to Shared Tap
 
 on:
   release:
@@ -12,7 +12,7 @@ on:
         type: string
 
 jobs:
-  update-homebrew-tap:
+  update-shared-homebrew-tap:
     runs-on: macos-latest
     permissions:
       contents: read
@@ -43,7 +43,7 @@ jobs:
             exit 1
           fi
 
-      - name: Update Homebrew tap
+      - name: Update shared Homebrew tap
         shell: bash
         run: |
           set -euo pipefail
