@@ -5,6 +5,9 @@ All notable changes to this project will be documented in this file.
 The format is inspired by [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses pre-1.0 semantic versioning tags.
 
 ## [Unreleased]
+### Added
+- Homebrew tap distribution plan and release automation assets for `oozoofrog/homebrew-tap`.
+- Manual/automated Homebrew formula publishing workflow documentation.
 
 ## [0.2.0] - 2026-03-14
 ### Added

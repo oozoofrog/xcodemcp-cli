@@ -16,6 +16,24 @@ OUTPUT=.tmp/xcodemcp ./scripts/build.sh
 PACKAGE=./cmd/xcodemcp ./scripts/build.sh
 ```
 
+## Homebrew
+
+Install from the personal tap:
+
+```bash
+brew tap oozoofrog/tap
+brew install oozoofrog/tap/xcodemcp
+```
+
+Upgrade to the latest published version:
+
+```bash
+brew update
+brew upgrade oozoofrog/tap/xcodemcp
+```
+
+If a release needs to be synced manually, see `/Volumes/eyedisk/develop/oozoofrog/xcodemcp-cli/docs/releasing.md` and `./scripts/release_homebrew.sh`.
+
 ## Usage
 
 Running `xcodemcp` with no arguments prints help. Use `bridge` for raw passthrough to `xcrun mcpbridge`.
