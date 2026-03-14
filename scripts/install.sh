@@ -279,16 +279,11 @@ fi
 INSTALL_BIN_DIR="$(mkdir -p "$BIN_DIR" && cd "$BIN_DIR" >/dev/null 2>&1 && pwd)"
 TEMP_OUTPUT="${WORK_DIR:-${TMPDIR:-/tmp}}/xcodecli"
 rm -f "$TEMP_OUTPUT"
-BUILD_VERSION="${VERSION:-}"
-if [[ -z "$BUILD_VERSION" && -n "$REF" && "$REF" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-  BUILD_VERSION="$REF"
-fi
-
 log "building xcodecli"
-if [[ -n "$BUILD_VERSION" ]]; then
-  VERSION="$BUILD_VERSION" "${BUILD_ROOT}/scripts/build.sh" "$TEMP_OUTPUT"
+if [[ -n "$REF" && "$REF" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+  env VERSION="$REF" "${BUILD_ROOT}/scripts/build.sh" "$TEMP_OUTPUT"
 else
-  "${BUILD_ROOT}/scripts/build.sh" "$TEMP_OUTPUT"
+  env -u VERSION "${BUILD_ROOT}/scripts/build.sh" "$TEMP_OUTPUT"
 fi
 
 INSTALL_PATH="${INSTALL_BIN_DIR}/xcodecli"

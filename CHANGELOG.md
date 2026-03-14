@@ -5,10 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is inspired by [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses pre-1.0 semantic versioning tags.
 
 ## [Unreleased]
+### Added
+- `xcodecli version` and `xcodecli --version` for printing the current CLI version.
+
+### Changed
+- Build and release flows now inject tagged versions into release binaries while local builds continue to default to `dev`.
 
 ## [0.3.0] - 2026-03-14
 ### Added
-- `xcodecli version` and `xcodecli --version` for printing the current CLI version.
 - `agent guide` subcommand for read-only workflow tutoring that maps a request to the recommended xcodecli tool sequence and prints exact next commands.
 - `agent demo` subcommand for a safe read-only onboarding flow that runs `doctor`, lists live MCP tools, calls `XcodeListWindows`, and prints suggested next commands.
 - `scripts/install.sh` for installing `xcodecli` from a local checkout or directly from GitHub source refs.
@@ -18,7 +22,6 @@ The format is inspired by [Keep a Changelog](https://keepachangelog.com/en/1.1.0
 - Moved installation guidance near the top of the README and documented both direct GitHub installs and Homebrew installs.
 - `scripts/install.sh` now verifies PATH reachability for the user's login shell and prints shell-specific next steps when `xcodecli` is not discoverable on PATH.
 - Homebrew release automation now publishes `oozoofrog/tap/xcodecli`.
-- Build and release flows now inject tagged versions into release binaries while local builds continue to default to `dev`.
 
 ## [0.2.1] - 2026-03-14
 ### Added
