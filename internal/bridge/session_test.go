@@ -104,45 +104,6 @@ func TestResolveOptionsRepairsInvalidPersistedSessionID(t *testing.T) {
 	}
 }
 
-func TestResolveOptionsMigratesLegacyPersistedSessionID(t *testing.T) {
-	homeDir := t.TempDir()
-	t.Setenv("HOME", homeDir)
-
-	legacyPath, err := DefaultLegacySessionFilePath()
-	if err != nil {
-		t.Fatalf("DefaultLegacySessionFilePath returned error: %v", err)
-	}
-	newPath, err := DefaultSessionFilePath()
-	if err != nil {
-		t.Fatalf("DefaultSessionFilePath returned error: %v", err)
-	}
-	want := "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"
-	if err := os.MkdirAll(filepath.Dir(legacyPath), 0o700); err != nil {
-		t.Fatalf("MkdirAll failed: %v", err)
-	}
-	if err := os.WriteFile(legacyPath, []byte(want+"\n"), 0o600); err != nil {
-		t.Fatalf("WriteFile failed: %v", err)
-	}
-
-	resolved, err := ResolveOptions(nil, EnvOptions{}, newPath)
-	if err != nil {
-		t.Fatalf("ResolveOptions returned error: %v", err)
-	}
-	if resolved.SessionID != want {
-		t.Fatalf("SessionID = %q, want %q", resolved.SessionID, want)
-	}
-	if resolved.SessionSource != SessionSourceMigrated {
-		t.Fatalf("SessionSource = %q, want %q", resolved.SessionSource, SessionSourceMigrated)
-	}
-	data, err := os.ReadFile(newPath)
-	if err != nil {
-		t.Fatalf("ReadFile(%q) failed: %v", newPath, err)
-	}
-	if got := string(data); got != want+"\n" {
-		t.Fatalf("persisted session content = %q, want %q", got, want+"\n")
-	}
-}
-
 func TestNewUUIDReturnsValidUUID(t *testing.T) {
 	value, err := NewUUID()
 	if err != nil {

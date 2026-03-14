@@ -125,10 +125,6 @@ If you want the next mutating step after discovery, that is where you would choo
 
 Then retry `tools list` or `tool inspect`.
 
-### Legacy rename cleanup
-- If you previously used `xcodemcp`, run `./xcodecli agent uninstall` once to remove old LaunchAgent/runtime artifacts.
-- `./xcodecli doctor --json` and `./xcodecli agent status --json` will tell you whether any legacy `xcodemcp` files still exist.
-
 ### The payload is large or reused often
 Prefer `--json @file` over a huge inline string.
 

@@ -8,11 +8,9 @@ import (
 )
 
 const (
-	LaunchAgentLabel       = "io.oozoofrog.xcodecli"
-	LegacyLaunchAgentLabel = "io.oozoofrog.xcodemcp"
-	SupportDirName         = "xcodecli"
-	LegacySupportDirName   = "xcodemcp"
-	DefaultIdleTimeout     = 10 * time.Minute
+	LaunchAgentLabel   = "io.oozoofrog.xcodecli"
+	SupportDirName     = "xcodecli"
+	DefaultIdleTimeout = 10 * time.Minute
 )
 
 type Paths struct {
@@ -31,20 +29,8 @@ func DefaultPaths() (Paths, error) {
 	return ResolvePaths(homeDir), nil
 }
 
-func DefaultLegacyPaths() (Paths, error) {
-	homeDir, err := os.UserHomeDir()
-	if err != nil {
-		return Paths{}, fmt.Errorf("resolve home directory for legacy agent paths: %w", err)
-	}
-	return ResolveLegacyPaths(homeDir), nil
-}
-
 func ResolvePaths(homeDir string) Paths {
 	return resolveNamedPaths(homeDir, SupportDirName, LaunchAgentLabel)
-}
-
-func ResolveLegacyPaths(homeDir string) Paths {
-	return resolveNamedPaths(homeDir, LegacySupportDirName, LegacyLaunchAgentLabel)
 }
 
 func resolveNamedPaths(homeDir, supportDirName, label string) Paths {

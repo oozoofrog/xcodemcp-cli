@@ -268,7 +268,7 @@ func run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.
 			fmt.Fprintf(stderr, "xcodecli: %v\n", err)
 			return 1
 		}
-		fmt.Fprintln(stdout, "removed xcodecli LaunchAgent/runtime files and any legacy xcodemcp artifacts")
+		fmt.Fprintln(stdout, "removed LaunchAgent plist and local agent runtime files")
 		return 0
 	case commandAgentRun:
 		signalCtx, cancel := signal.NotifyContext(ctx, syscall.SIGINT, syscall.SIGTERM, syscall.SIGHUP)
@@ -366,8 +366,6 @@ func logResolvedSession(w io.Writer, resolved bridge.ResolvedOptions) {
 		fmt.Fprintf(w, "[debug] using persisted MCP_XCODE_SESSION_ID %s from %s\n", resolved.SessionID, resolved.SessionPath)
 	case bridge.SessionSourceGenerated:
 		fmt.Fprintf(w, "[debug] generated persistent MCP_XCODE_SESSION_ID %s at %s\n", resolved.SessionID, resolved.SessionPath)
-	case bridge.SessionSourceMigrated:
-		fmt.Fprintf(w, "[debug] migrated persistent MCP_XCODE_SESSION_ID %s into %s from legacy xcodemcp storage\n", resolved.SessionID, resolved.SessionPath)
 	}
 }
 
@@ -392,7 +390,7 @@ func formatAgentStatus(status agent.Status) string {
 	if status.SocketReachable {
 		socketText = "yes"
 	}
-	return fmt.Sprintf("xcodecli agent\n\nlabel: %s\nplist installed: %t\nplist path: %s\nregistered binary: %s\ncurrent binary: %s\nbinary matches: %s\nsocket path: %s\nsocket reachable: %s\nrunning: %s\npid: %d\nidle timeout: %s\nbackend sessions: %d\nlegacy label: %s\nlegacy plist installed: %t\nlegacy plist path: %s\nlegacy support dir: %s (exists=%t)\nlegacy session path: %s (exists=%t)\nlegacy socket path: %s (exists=%t)\n",
+	return fmt.Sprintf("xcodecli agent\n\nlabel: %s\nplist installed: %t\nplist path: %s\nregistered binary: %s\ncurrent binary: %s\nbinary matches: %s\nsocket path: %s\nsocket reachable: %s\nrunning: %s\npid: %d\nidle timeout: %s\nbackend sessions: %d\n",
 		status.Label,
 		status.PlistInstalled,
 		status.PlistPath,
@@ -405,15 +403,6 @@ func formatAgentStatus(status agent.Status) string {
 		status.PID,
 		status.IdleTimeout,
 		status.BackendSessions,
-		status.Legacy.Label,
-		status.Legacy.PlistInstalled,
-		status.Legacy.PlistPath,
-		status.Legacy.SupportDir,
-		status.Legacy.SupportDirExists,
-		status.Legacy.SessionPath,
-		status.Legacy.SessionFileExists,
-		status.Legacy.SocketPath,
-		status.Legacy.SocketExists,
 	)
 }
 

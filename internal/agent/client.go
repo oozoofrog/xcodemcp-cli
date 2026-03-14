@@ -11,7 +11,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/oozoofrog/xcodecli/internal/bridge"
 	"github.com/oozoofrog/xcodecli/internal/mcp"
 )
 
@@ -72,16 +71,11 @@ func StatusInfo(ctx context.Context, cfg Config) (Status, error) {
 	if err != nil {
 		return Status{}, err
 	}
-	legacy, err := inspectLegacyArtifacts()
-	if err != nil {
-		return Status{}, err
-	}
 	status := Status{
 		Label:       cfg.Label,
 		PlistPath:   cfg.Paths.PlistPath,
 		SocketPath:  cfg.Paths.SocketPath,
 		IdleTimeout: cfg.IdleTimeout,
-		Legacy:      legacy,
 	}
 	if _, err := os.Stat(cfg.Paths.PlistPath); err == nil {
 		status.PlistInstalled = true
@@ -129,20 +123,7 @@ func Uninstall(ctx context.Context, cfg Config) error {
 	}
 	_ = Stop(ctx, cfg)
 	_ = cfg.Launchd.Bootout(ctx, launchAgentServiceTarget(cfg.Label))
-	legacyPaths, legacyErr := DefaultLegacyPaths()
-	if legacyErr == nil {
-		_ = cfg.Launchd.Bootout(ctx, launchAgentServiceTarget(LegacyLaunchAgentLabel))
-	}
 	pathsToRemove := []string{cfg.Paths.PlistPath, cfg.Paths.SocketPath, cfg.Paths.PIDPath, cfg.Paths.LogPath}
-	if sessionPath, sessionErr := bridge.DefaultSessionFilePath(); sessionErr == nil {
-		pathsToRemove = append(pathsToRemove, sessionPath)
-	}
-	if legacyErr == nil {
-		pathsToRemove = append(pathsToRemove, legacyPaths.PlistPath, legacyPaths.SocketPath, legacyPaths.PIDPath, legacyPaths.LogPath)
-	}
-	if legacySessionPath, sessionErr := bridge.DefaultLegacySessionFilePath(); sessionErr == nil {
-		pathsToRemove = append(pathsToRemove, legacySessionPath)
-	}
 	for _, path := range pathsToRemove {
 		if path == "" {
 			continue
@@ -151,7 +132,7 @@ func Uninstall(ctx context.Context, cfg Config) error {
 			return fmt.Errorf("remove %s: %w", path, err)
 		}
 	}
-	for _, dir := range []string{cfg.Paths.SupportDir, legacyPaths.SupportDir} {
+	for _, dir := range []string{cfg.Paths.SupportDir} {
 		if dir == "" {
 			continue
 		}
@@ -160,45 +141,6 @@ func Uninstall(ctx context.Context, cfg Config) error {
 		}
 	}
 	return nil
-}
-
-func inspectLegacyArtifacts() (LegacyStatus, error) {
-	legacyPaths, err := DefaultLegacyPaths()
-	if err != nil {
-		return LegacyStatus{}, err
-	}
-	legacySessionPath, err := bridge.DefaultLegacySessionFilePath()
-	if err != nil {
-		return LegacyStatus{}, err
-	}
-	legacy := LegacyStatus{
-		Label:       LegacyLaunchAgentLabel,
-		PlistPath:   legacyPaths.PlistPath,
-		SupportDir:  legacyPaths.SupportDir,
-		SessionPath: legacySessionPath,
-		SocketPath:  legacyPaths.SocketPath,
-	}
-	if _, err := os.Stat(legacy.PlistPath); err == nil {
-		legacy.PlistInstalled = true
-	} else if !os.IsNotExist(err) {
-		return LegacyStatus{}, fmt.Errorf("inspect legacy launch agent plist: %w", err)
-	}
-	if _, err := os.Stat(legacy.SupportDir); err == nil {
-		legacy.SupportDirExists = true
-	} else if !os.IsNotExist(err) {
-		return LegacyStatus{}, fmt.Errorf("inspect legacy support directory: %w", err)
-	}
-	if _, err := os.Stat(legacy.SessionPath); err == nil {
-		legacy.SessionFileExists = true
-	} else if !os.IsNotExist(err) {
-		return LegacyStatus{}, fmt.Errorf("inspect legacy session file: %w", err)
-	}
-	if _, err := os.Stat(legacy.SocketPath); err == nil {
-		legacy.SocketExists = true
-	} else if !os.IsNotExist(err) {
-		return LegacyStatus{}, fmt.Errorf("inspect legacy socket path: %w", err)
-	}
-	return legacy, nil
 }
 
 func doWithAutostart(ctx context.Context, cfg Config, req rpcRequest) (rpcResponse, error) {

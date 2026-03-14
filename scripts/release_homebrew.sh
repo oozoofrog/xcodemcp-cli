@@ -7,7 +7,6 @@ export HOMEBREW_NO_INSTALL_CLEANUP=1
 
 TAP_REPO="oozoofrog/homebrew-tap"
 FORMULA_NAME="xcodecli"
-LEGACY_FORMULA_NAME="xcodemcp"
 DEFAULT_CLONE_ROOT="${TMPDIR:-/tmp}"
 
 usage() {
@@ -22,9 +21,8 @@ Examples:
 Behavior:
   - Downloads the GitHub source tarball for the given tag
   - Computes sha256 and writes Formula/xcodecli.rb in the shared tap repo
-  - Removes Formula/xcodemcp.rb during the rename cutover
   - Runs Homebrew audit and build-from-source validation
-  - Commits the xcodecli formula add/update plus any xcodemcp formula removal unless --dry-run is set
+  - Commits only the xcodecli formula change locally unless --dry-run is set
   - Pushes the tap commit only when --push is set
 
 Environment:
@@ -69,7 +67,6 @@ ensure_git_identity() {
 ensure_tap_repo_safe() {
   local tap_dir="$1"
   local formula_rel="Formula/${FORMULA_NAME}.rb"
-  local legacy_formula_rel="Formula/${LEGACY_FORMULA_NAME}.rb"
   local status
   status="$(git -C "$tap_dir" status --short)"
   if [[ -z "$status" ]]; then
@@ -79,7 +76,7 @@ ensure_tap_repo_safe() {
   while IFS= read -r line; do
     [[ -z "$line" ]] && continue
     local path_part="${line:3}"
-    if [[ "$path_part" != "$formula_rel" && "$path_part" != "$legacy_formula_rel" ]]; then
+    if [[ "$path_part" != "$formula_rel" ]]; then
       fail "tap repo has unrelated local changes: $line"
     fi
   done <<< "$status"
@@ -169,7 +166,6 @@ fi
 ensure_tap_repo_safe "$TAP_DIR"
 mkdir -p "$TAP_DIR/Formula"
 FORMULA_PATH="$TAP_DIR/Formula/${FORMULA_NAME}.rb"
-LEGACY_FORMULA_PATH="$TAP_DIR/Formula/${LEGACY_FORMULA_NAME}.rb"
 TARBALL_URL="https://github.com/${SOURCE_REPO}/archive/refs/tags/${TAG}.tar.gz"
 
 log "computing sha256 for ${TARBALL_URL}"
@@ -178,10 +174,6 @@ SHA256="$(curl -fsSL "$TARBALL_URL" | shasum -a 256 | awk '{print $1}')"
 
 log "writing ${FORMULA_PATH} inside shared tap repo ${TAP_DIR}"
 render_formula "$VERSION" "$SHA256" > "$FORMULA_PATH"
-if [[ -f "$LEGACY_FORMULA_PATH" ]]; then
-  log "removing legacy formula ${LEGACY_FORMULA_PATH}"
-  rm -f "$LEGACY_FORMULA_PATH"
-fi
 
 VALIDATION_TAP_ADDED=0
 if ! brew tap | grep -qx "$TAP_NAME"; then
@@ -238,7 +230,7 @@ if [[ "$WAS_INSTALLED" -eq 0 ]]; then
   brew uninstall --force "$FORMULA_NAME"
 fi
 
-if [[ -z "$(git -C "$TAP_DIR" status --short -- "Formula/${FORMULA_NAME}.rb" "Formula/${LEGACY_FORMULA_NAME}.rb")" ]]; then
+if [[ -z "$(git -C "$TAP_DIR" status --short -- "Formula/${FORMULA_NAME}.rb")" ]]; then
   log "formula already up to date"
 else
   if [[ "$DRY_RUN" -eq 1 ]]; then
@@ -246,7 +238,7 @@ else
   else
     ensure_git_identity "$TAP_DIR"
     ensure_tap_repo_safe "$TAP_DIR"
-    git -C "$TAP_DIR" add -A "Formula/${FORMULA_NAME}.rb" "Formula/${LEGACY_FORMULA_NAME}.rb"
+    git -C "$TAP_DIR" add "Formula/${FORMULA_NAME}.rb"
     git -C "$TAP_DIR" commit -m "${FORMULA_NAME} ${VERSION}"
     if [[ "$PUSH" -eq 1 ]]; then
       log "rebasing tap branch before push"
