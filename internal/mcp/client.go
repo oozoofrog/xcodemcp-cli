@@ -209,7 +209,7 @@ func (s *session) initialize() error {
 		"protocolVersion": requestProtocolVersion,
 		"capabilities":    map[string]any{},
 		"clientInfo": map[string]any{
-			"name":    "xcodemcp",
+			"name":    "xcodecli",
 			"version": "dev",
 		},
 	}, &result); err != nil {

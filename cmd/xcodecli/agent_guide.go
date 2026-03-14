@@ -9,9 +9,9 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/oozoofrog/xcodemcp-cli/internal/agent"
-	"github.com/oozoofrog/xcodemcp-cli/internal/bridge"
-	"github.com/oozoofrog/xcodemcp-cli/internal/doctor"
+	"github.com/oozoofrog/xcodecli/internal/agent"
+	"github.com/oozoofrog/xcodecli/internal/bridge"
+	"github.com/oozoofrog/xcodecli/internal/doctor"
 )
 
 const guideWorkflowCatalog = "catalog"
@@ -138,7 +138,7 @@ type guideWindowMatch struct {
 func runAgentGuide(ctx context.Context, cfg cliConfig, env []string, stdout, stderr io.Writer, agentCfg agent.Config) int {
 	resolved, err := resolveEffectiveOptions(env, cfg)
 	if err != nil {
-		fmt.Fprintf(stderr, "xcodemcp: %v\n", err)
+		fmt.Fprintf(stderr, "xcodecli: %v\n", err)
 		return 1
 	}
 	if cfg.Debug {
@@ -146,7 +146,7 @@ func runAgentGuide(ctx context.Context, cfg cliConfig, env []string, stdout, std
 	}
 	effective := resolved.EnvOptions
 	if err := bridge.ValidateEnvOptions(effective); err != nil {
-		fmt.Fprintf(stderr, "xcodemcp: invalid MCP options: %v\n", err)
+		fmt.Fprintf(stderr, "xcodecli: invalid MCP options: %v\n", err)
 		return 1
 	}
 
@@ -171,7 +171,7 @@ func runAgentGuide(ctx context.Context, cfg cliConfig, env []string, stdout, std
 
 	if cfg.JSONOutput {
 		if err := writeJSON(stdout, report); err != nil {
-			fmt.Fprintf(stderr, "xcodemcp: %v\n", err)
+			fmt.Fprintf(stderr, "xcodecli: %v\n", err)
 			return 1
 		}
 		return 0
@@ -615,7 +615,7 @@ func buildGuideCatalogWorkflow() (guideWorkflowResult, []string) {
 
 	nextCommands := make([]string, 0, len(guideWorkflowOrder))
 	for _, workflowID := range guideWorkflowOrder {
-		nextCommands = append(nextCommands, fmt.Sprintf(`xcodemcp agent guide %s`, shellQuote(guideWorkflowExamples[workflowID])))
+		nextCommands = append(nextCommands, fmt.Sprintf(`xcodecli agent guide %s`, shellQuote(guideWorkflowExamples[workflowID])))
 	}
 
 	return guideWorkflowResult{
@@ -632,7 +632,7 @@ func buildGuideCatalogWorkflow() (guideWorkflowResult, []string) {
 			{
 				Title:       "If you want safe live context first",
 				Description: "Use agent demo to see the live window list and current tool catalog before picking a workflow.",
-				Commands:    []string{"xcodemcp agent demo"},
+				Commands:    []string{"xcodecli agent demo"},
 			},
 		},
 	}, nextCommands
@@ -666,7 +666,7 @@ func buildGuideBuildWorkflow(intent guideIntentMatch, tabIdentifier string, wind
 			Title:       "If the window match looks wrong",
 			Description: "Re-check the live Xcode windows and swap in the exact tabIdentifier yourself.",
 			Commands: []string{
-				`xcodemcp tool call XcodeListWindows --json '{}'`,
+				`xcodecli tool call XcodeListWindows --json '{}'`,
 				formatBuildProjectCommand("<tabIdentifier from above>"),
 			},
 		},
@@ -674,8 +674,8 @@ func buildGuideBuildWorkflow(intent guideIntentMatch, tabIdentifier string, wind
 			Title:       "If you want schema reassurance",
 			Description: "Inspect the tool schemas before executing the build flow.",
 			Commands: []string{
-				`xcodemcp tool inspect BuildProject --json`,
-				`xcodemcp tool inspect GetBuildLog --json`,
+				`xcodecli tool inspect BuildProject --json`,
+				`xcodecli tool inspect GetBuildLog --json`,
 			},
 		},
 	}
@@ -731,8 +731,8 @@ func buildGuideTestWorkflow(intent guideIntentMatch, tabIdentifier string, windo
 			Title:       "If schema details matter",
 			Description: "Inspect the testing tool schemas before composing a narrower payload.",
 			Commands: []string{
-				`xcodemcp tool inspect GetTestList --json`,
-				`xcodemcp tool inspect RunSomeTests --json`,
+				`xcodecli tool inspect GetTestList --json`,
+				`xcodecli tool inspect RunSomeTests --json`,
 			},
 		},
 	}
@@ -794,8 +794,8 @@ func buildGuideReadWorkflow(intent guideIntentMatch, tabIdentifier string, windo
 			Title:       "If you want schema reassurance",
 			Description: "Inspect the lookup and read schemas before composing a larger payload.",
 			Commands: []string{
-				fmt.Sprintf(`xcodemcp tool inspect %s --json`, lookupTool),
-				`xcodemcp tool inspect XcodeRead --json`,
+				fmt.Sprintf(`xcodecli tool inspect %s --json`, lookupTool),
+				`xcodecli tool inspect XcodeRead --json`,
 			},
 		},
 	}
@@ -841,8 +841,8 @@ func buildGuideSearchWorkflow(intent guideIntentMatch, tabIdentifier string, win
 			Title:       "If the first search is too broad",
 			Description: "Refine the glob, grep pattern, or output mode after you see the initial results.",
 			Commands: []string{
-				`xcodemcp tool inspect XcodeGrep --json`,
-				`xcodemcp tool inspect XcodeGlob --json`,
+				`xcodecli tool inspect XcodeGrep --json`,
+				`xcodecli tool inspect XcodeGlob --json`,
 			},
 		},
 	}
@@ -906,7 +906,7 @@ func buildGuideEditWorkflow(intent guideIntentMatch, tabIdentifier string, windo
 			Title:       "If the change is a full rewrite",
 			Description: "Switch from XcodeUpdate to XcodeWrite once you know the entire target file contents.",
 			Commands: []string{
-				`xcodemcp tool inspect XcodeWrite --json`,
+				`xcodecli tool inspect XcodeWrite --json`,
 				formatXcodeWriteTemplate(tabIdentifier, pathPlaceholder),
 			},
 		},
@@ -914,8 +914,8 @@ func buildGuideEditWorkflow(intent guideIntentMatch, tabIdentifier string, windo
 			Title:       "If you want schema reassurance",
 			Description: "Inspect the edit tool schemas before composing a large replacement payload.",
 			Commands: []string{
-				`xcodemcp tool inspect XcodeUpdate --json`,
-				`xcodemcp tool inspect XcodeRefreshCodeIssuesInFile --json`,
+				`xcodecli tool inspect XcodeUpdate --json`,
+				`xcodecli tool inspect XcodeRefreshCodeIssuesInFile --json`,
 			},
 		},
 	}
@@ -963,7 +963,7 @@ func buildGuideDiagnoseWorkflow(intent guideIntentMatch, tabIdentifier string, w
 			Title:       "If you need issue navigator context",
 			Description: "Inspect the issue navigator tool schema before composing a filtered request.",
 			Commands: []string{
-				`xcodemcp tool inspect XcodeListNavigatorIssues --json`,
+				`xcodecli tool inspect XcodeListNavigatorIssues --json`,
 			},
 		},
 		{
@@ -986,7 +986,7 @@ func buildGuideDiagnoseWorkflow(intent guideIntentMatch, tabIdentifier string, w
 
 func formatAgentGuide(report agentGuideReport, windowMatch guideWindowMatch) string {
 	var b strings.Builder
-	b.WriteString("xcodemcp agent guide\n\n")
+	b.WriteString("xcodecli agent guide\n\n")
 
 	b.WriteString("Intent\n")
 	b.WriteString("------\n")
@@ -1091,7 +1091,7 @@ func guideWindowSkipReason(windowMatch guideWindowMatch) string {
 func buildGuideBuildCommands(tabIdentifier string, windowMatch guideWindowMatch) []string {
 	commands := []string{}
 	if windowMatch.MatchedEntry == nil {
-		commands = append(commands, `xcodemcp tool call XcodeListWindows --json '{}'`)
+		commands = append(commands, `xcodecli tool call XcodeListWindows --json '{}'`)
 	}
 	commands = append(commands,
 		formatBuildProjectCommand(tabIdentifier),
@@ -1103,7 +1103,7 @@ func buildGuideBuildCommands(tabIdentifier string, windowMatch guideWindowMatch)
 func buildGuideTestCommands(tabIdentifier string, windowMatch guideWindowMatch) []string {
 	commands := []string{}
 	if windowMatch.MatchedEntry == nil {
-		commands = append(commands, `xcodemcp tool call XcodeListWindows --json '{}'`)
+		commands = append(commands, `xcodecli tool call XcodeListWindows --json '{}'`)
 	}
 	commands = append(commands,
 		formatRunAllTestsCommand(tabIdentifier),
@@ -1115,7 +1115,7 @@ func buildGuideTestCommands(tabIdentifier string, windowMatch guideWindowMatch) 
 func buildGuideReadCommands(tabIdentifier, subject string, windowMatch guideWindowMatch) []string {
 	commands := []string{}
 	if windowMatch.MatchedEntry == nil {
-		commands = append(commands, `xcodemcp tool call XcodeListWindows --json '{}'`)
+		commands = append(commands, `xcodecli tool call XcodeListWindows --json '{}'`)
 	}
 	if looksLikeFileHint(subject) {
 		commands = append(commands,
@@ -1134,7 +1134,7 @@ func buildGuideReadCommands(tabIdentifier, subject string, windowMatch guideWind
 func buildGuideSearchCommands(tabIdentifier, subject string, windowMatch guideWindowMatch) []string {
 	commands := []string{}
 	if windowMatch.MatchedEntry == nil {
-		commands = append(commands, `xcodemcp tool call XcodeListWindows --json '{}'`)
+		commands = append(commands, `xcodecli tool call XcodeListWindows --json '{}'`)
 	}
 	if looksLikeFileHint(subject) {
 		commands = append(commands, formatXcodeGlobCommand(tabIdentifier, guideGlobPattern(subject)))
@@ -1147,7 +1147,7 @@ func buildGuideSearchCommands(tabIdentifier, subject string, windowMatch guideWi
 func buildGuideEditCommands(tabIdentifier, subject string, windowMatch guideWindowMatch) []string {
 	commands := []string{}
 	if windowMatch.MatchedEntry == nil {
-		commands = append(commands, `xcodemcp tool call XcodeListWindows --json '{}'`)
+		commands = append(commands, `xcodecli tool call XcodeListWindows --json '{}'`)
 	}
 	pathPlaceholder := "<path from XcodeLS>"
 	if looksLikeFileHint(subject) {
@@ -1167,7 +1167,7 @@ func buildGuideEditCommands(tabIdentifier, subject string, windowMatch guideWind
 func buildGuideDiagnoseCommands(tabIdentifier string, windowMatch guideWindowMatch) []string {
 	commands := []string{}
 	if windowMatch.MatchedEntry == nil {
-		commands = append(commands, `xcodemcp tool call XcodeListWindows --json '{}'`)
+		commands = append(commands, `xcodecli tool call XcodeListWindows --json '{}'`)
 	}
 	commands = append(commands,
 		formatGetBuildLogCommand(tabIdentifier, "error"),
@@ -1232,58 +1232,58 @@ func guideSearchPattern(subject string) string {
 }
 
 func formatBuildProjectCommand(tabIdentifier string) string {
-	return fmt.Sprintf(`xcodemcp tool call BuildProject --timeout 300s --json '{"tabIdentifier":%s}'`, jsonQuote(tabIdentifier))
+	return fmt.Sprintf(`xcodecli tool call BuildProject --timeout 300s --json '{"tabIdentifier":%s}'`, jsonQuote(tabIdentifier))
 }
 
 func formatGetBuildLogCommand(tabIdentifier, severity string) string {
-	return fmt.Sprintf(`xcodemcp tool call GetBuildLog --timeout 60s --json '{"tabIdentifier":%s,"severity":%s}'`, jsonQuote(tabIdentifier), jsonQuote(severity))
+	return fmt.Sprintf(`xcodecli tool call GetBuildLog --timeout 60s --json '{"tabIdentifier":%s,"severity":%s}'`, jsonQuote(tabIdentifier), jsonQuote(severity))
 }
 
 func formatRunAllTestsCommand(tabIdentifier string) string {
-	return fmt.Sprintf(`xcodemcp tool call RunAllTests --timeout 300s --json '{"tabIdentifier":%s}'`, jsonQuote(tabIdentifier))
+	return fmt.Sprintf(`xcodecli tool call RunAllTests --timeout 300s --json '{"tabIdentifier":%s}'`, jsonQuote(tabIdentifier))
 }
 
 func formatGetTestListCommand(tabIdentifier string) string {
-	return fmt.Sprintf(`xcodemcp tool call GetTestList --timeout 60s --json '{"tabIdentifier":%s}'`, jsonQuote(tabIdentifier))
+	return fmt.Sprintf(`xcodecli tool call GetTestList --timeout 60s --json '{"tabIdentifier":%s}'`, jsonQuote(tabIdentifier))
 }
 
 func formatRunSomeTestsTemplate(tabIdentifier string) string {
-	return fmt.Sprintf(`xcodemcp tool call RunSomeTests --timeout 300s --json '{"tabIdentifier":%s,"tests":[{"targetName":"<targetName>","testIdentifier":"<identifier>"}]}'`, jsonQuote(tabIdentifier))
+	return fmt.Sprintf(`xcodecli tool call RunSomeTests --timeout 300s --json '{"tabIdentifier":%s,"tests":[{"targetName":"<targetName>","testIdentifier":"<identifier>"}]}'`, jsonQuote(tabIdentifier))
 }
 
 func formatXcodeLSCommand(tabIdentifier, path string) string {
-	return fmt.Sprintf(`xcodemcp tool call XcodeLS --timeout 60s --json '{"tabIdentifier":%s,"path":%s}'`, jsonQuote(tabIdentifier), jsonQuote(path))
+	return fmt.Sprintf(`xcodecli tool call XcodeLS --timeout 60s --json '{"tabIdentifier":%s,"path":%s}'`, jsonQuote(tabIdentifier), jsonQuote(path))
 }
 
 func formatXcodeGlobCommand(tabIdentifier, pattern string) string {
-	return fmt.Sprintf(`xcodemcp tool call XcodeGlob --timeout 60s --json '{"tabIdentifier":%s,"pattern":%s}'`, jsonQuote(tabIdentifier), jsonQuote(pattern))
+	return fmt.Sprintf(`xcodecli tool call XcodeGlob --timeout 60s --json '{"tabIdentifier":%s,"pattern":%s}'`, jsonQuote(tabIdentifier), jsonQuote(pattern))
 }
 
 func formatXcodeReadCommand(tabIdentifier, filePath string) string {
-	return fmt.Sprintf(`xcodemcp tool call XcodeRead --timeout 60s --json '{"tabIdentifier":%s,"filePath":%s}'`, jsonQuote(tabIdentifier), jsonQuote(filePath))
+	return fmt.Sprintf(`xcodecli tool call XcodeRead --timeout 60s --json '{"tabIdentifier":%s,"filePath":%s}'`, jsonQuote(tabIdentifier), jsonQuote(filePath))
 }
 
 func formatXcodeGrepCommand(tabIdentifier, pattern string) string {
-	return fmt.Sprintf(`xcodemcp tool call XcodeGrep --timeout 60s --json '{"tabIdentifier":%s,"pattern":%s,"outputMode":"content","showLineNumbers":true}'`, jsonQuote(tabIdentifier), jsonQuote(pattern))
+	return fmt.Sprintf(`xcodecli tool call XcodeGrep --timeout 60s --json '{"tabIdentifier":%s,"pattern":%s,"outputMode":"content","showLineNumbers":true}'`, jsonQuote(tabIdentifier), jsonQuote(pattern))
 }
 
 func formatXcodeUpdateTemplate(tabIdentifier, filePath string) string {
-	return fmt.Sprintf(`xcodemcp tool call XcodeUpdate --timeout 60s --json '{"tabIdentifier":%s,"filePath":%s,"oldString":"<exact text to replace>","newString":"<replacement text>"}'`, jsonQuote(tabIdentifier), jsonQuote(filePath))
+	return fmt.Sprintf(`xcodecli tool call XcodeUpdate --timeout 60s --json '{"tabIdentifier":%s,"filePath":%s,"oldString":"<exact text to replace>","newString":"<replacement text>"}'`, jsonQuote(tabIdentifier), jsonQuote(filePath))
 }
 
 func formatRefreshIssuesCommand(tabIdentifier, filePath string) string {
-	return fmt.Sprintf(`xcodemcp tool call XcodeRefreshCodeIssuesInFile --timeout 60s --json '{"tabIdentifier":%s,"filePath":%s}'`, jsonQuote(tabIdentifier), jsonQuote(filePath))
+	return fmt.Sprintf(`xcodecli tool call XcodeRefreshCodeIssuesInFile --timeout 60s --json '{"tabIdentifier":%s,"filePath":%s}'`, jsonQuote(tabIdentifier), jsonQuote(filePath))
 }
 
 func formatXcodeWriteTemplate(tabIdentifier, filePath string) string {
-	return fmt.Sprintf(`xcodemcp tool call XcodeWrite --timeout 60s --json '{"tabIdentifier":%s,"filePath":%s,"content":"<full file contents>"}'`, jsonQuote(tabIdentifier), jsonQuote(filePath))
+	return fmt.Sprintf(`xcodecli tool call XcodeWrite --timeout 60s --json '{"tabIdentifier":%s,"filePath":%s,"content":"<full file contents>"}'`, jsonQuote(tabIdentifier), jsonQuote(filePath))
 }
 
 func formatMaybeWindowsCommand(windowMatch guideWindowMatch) string {
 	if windowMatch.MatchedEntry != nil {
 		return fmt.Sprintf("# already matched %s", windowMatch.MatchedEntry.TabIdentifier)
 	}
-	return `xcodemcp tool call XcodeListWindows --json '{}'`
+	return `xcodecli tool call XcodeListWindows --json '{}'`
 }
 
 func jsonQuote(value string) string {

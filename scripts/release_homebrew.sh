@@ -1,12 +1,13 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-SOURCE_REPO="oozoofrog/xcodemcp-cli"
+SOURCE_REPO="oozoofrog/xcodecli"
 export HOMEBREW_NO_AUTO_UPDATE=1
 export HOMEBREW_NO_INSTALL_CLEANUP=1
 
 TAP_REPO="oozoofrog/homebrew-tap"
-FORMULA_NAME="xcodemcp"
+FORMULA_NAME="xcodecli"
+LEGACY_FORMULA_NAME="xcodemcp"
 DEFAULT_CLONE_ROOT="${TMPDIR:-/tmp}"
 
 usage() {
@@ -15,14 +16,15 @@ Usage:
   ./scripts/release_homebrew.sh <tag> [--tap-dir PATH] [--push] [--dry-run]
 
 Examples:
-  ./scripts/release_homebrew.sh v0.2.0 --tap-dir .tmp/homebrew-tap --dry-run
-  ./scripts/release_homebrew.sh v0.2.1 --push
+  ./scripts/release_homebrew.sh v0.3.0 --tap-dir .tmp/homebrew-tap --dry-run
+  ./scripts/release_homebrew.sh v0.3.0 --push
 
 Behavior:
   - Downloads the GitHub source tarball for the given tag
-  - Computes sha256 and writes Formula/xcodemcp.rb in the shared tap repo
+  - Computes sha256 and writes Formula/xcodecli.rb in the shared tap repo
+  - Removes Formula/xcodemcp.rb during the rename cutover
   - Runs Homebrew audit and build-from-source validation
-  - Commits only the xcodemcp formula change locally unless --dry-run is set
+  - Commits the xcodecli formula add/update plus any xcodemcp formula removal unless --dry-run is set
   - Pushes the tap commit only when --push is set
 
 Environment:
@@ -67,6 +69,7 @@ ensure_git_identity() {
 ensure_tap_repo_safe() {
   local tap_dir="$1"
   local formula_rel="Formula/${FORMULA_NAME}.rb"
+  local legacy_formula_rel="Formula/${LEGACY_FORMULA_NAME}.rb"
   local status
   status="$(git -C "$tap_dir" status --short)"
   if [[ -z "$status" ]]; then
@@ -76,7 +79,7 @@ ensure_tap_repo_safe() {
   while IFS= read -r line; do
     [[ -z "$line" ]] && continue
     local path_part="${line:3}"
-    if [[ "$path_part" != "$formula_rel" ]]; then
+    if [[ "$path_part" != "$formula_rel" && "$path_part" != "$legacy_formula_rel" ]]; then
       fail "tap repo has unrelated local changes: $line"
     fi
   done <<< "$status"
@@ -86,7 +89,7 @@ render_formula() {
   local version="$1"
   local sha256="$2"
   cat <<FORMULA
-class Xcodemcp < Formula
+class Xcodecli < Formula
   desc "Go CLI wrapper around xcrun mcpbridge"
   homepage "https://github.com/${SOURCE_REPO}"
   url "https://github.com/${SOURCE_REPO}/archive/refs/tags/v${version}.tar.gz"
@@ -96,12 +99,12 @@ class Xcodemcp < Formula
   depends_on "go" => :build
 
   def install
-    system "go", "build", *std_go_args(output: bin/"xcodemcp"), "./cmd/xcodemcp"
+    system "go", "build", *std_go_args(output: bin/"xcodecli"), "./cmd/xcodecli"
   end
 
   test do
-    output = shell_output("#{bin}/xcodemcp help")
-    assert_match "xcodemcp wraps xcrun mcpbridge", output
+    output = shell_output("#{bin}/xcodecli help")
+    assert_match "xcodecli wraps xcrun mcpbridge", output
   end
 end
 FORMULA
@@ -156,7 +159,7 @@ require_cmd brew
 TAP_NAME="oozoofrog/tap"
 AUTO_CLONED=0
 if [[ -z "$TAP_DIR" ]]; then
-  TAP_DIR="$(mktemp -d "${DEFAULT_CLONE_ROOT%/}/xcodemcp-homebrew-tap-XXXXXX")"
+  TAP_DIR="$(mktemp -d "${DEFAULT_CLONE_ROOT%/}/xcodecli-homebrew-tap-XXXXXX")"
   AUTO_CLONED=1
   log "cloning ${TAP_REPO} into ${TAP_DIR}"
   clone_tap_repo "$TAP_DIR"
@@ -166,6 +169,7 @@ fi
 ensure_tap_repo_safe "$TAP_DIR"
 mkdir -p "$TAP_DIR/Formula"
 FORMULA_PATH="$TAP_DIR/Formula/${FORMULA_NAME}.rb"
+LEGACY_FORMULA_PATH="$TAP_DIR/Formula/${LEGACY_FORMULA_NAME}.rb"
 TARBALL_URL="https://github.com/${SOURCE_REPO}/archive/refs/tags/${TAG}.tar.gz"
 
 log "computing sha256 for ${TARBALL_URL}"
@@ -174,6 +178,10 @@ SHA256="$(curl -fsSL "$TARBALL_URL" | shasum -a 256 | awk '{print $1}')"
 
 log "writing ${FORMULA_PATH} inside shared tap repo ${TAP_DIR}"
 render_formula "$VERSION" "$SHA256" > "$FORMULA_PATH"
+if [[ -f "$LEGACY_FORMULA_PATH" ]]; then
+  log "removing legacy formula ${LEGACY_FORMULA_PATH}"
+  rm -f "$LEGACY_FORMULA_PATH"
+fi
 
 VALIDATION_TAP_ADDED=0
 if ! brew tap | grep -qx "$TAP_NAME"; then
@@ -189,7 +197,7 @@ VALIDATION_FORMULA_PATH="$VALIDATION_FORMULA_DIR/${FORMULA_NAME}.rb"
 BACKUP_FORMULA_PATH=""
 mkdir -p "$VALIDATION_FORMULA_DIR"
 if [[ -f "$VALIDATION_FORMULA_PATH" ]]; then
-  BACKUP_FORMULA_PATH="$(mktemp "${DEFAULT_CLONE_ROOT%/}/xcodemcp-formula-backup-XXXXXX.rb")"
+  BACKUP_FORMULA_PATH="$(mktemp "${DEFAULT_CLONE_ROOT%/}/xcodecli-formula-backup-XXXXXX.rb")"
   cp "$VALIDATION_FORMULA_PATH" "$BACKUP_FORMULA_PATH"
 fi
 log "temporarily validating only ${VALIDATION_FORMULA_PATH}"
@@ -230,7 +238,7 @@ if [[ "$WAS_INSTALLED" -eq 0 ]]; then
   brew uninstall --force "$FORMULA_NAME"
 fi
 
-if [[ -z "$(git -C "$TAP_DIR" status --short -- "Formula/${FORMULA_NAME}.rb")" ]]; then
+if [[ -z "$(git -C "$TAP_DIR" status --short -- "Formula/${FORMULA_NAME}.rb" "Formula/${LEGACY_FORMULA_NAME}.rb")" ]]; then
   log "formula already up to date"
 else
   if [[ "$DRY_RUN" -eq 1 ]]; then
@@ -238,7 +246,7 @@ else
   else
     ensure_git_identity "$TAP_DIR"
     ensure_tap_repo_safe "$TAP_DIR"
-    git -C "$TAP_DIR" add "Formula/${FORMULA_NAME}.rb"
+    git -C "$TAP_DIR" add -A "Formula/${FORMULA_NAME}.rb" "Formula/${LEGACY_FORMULA_NAME}.rb"
     git -C "$TAP_DIR" commit -m "${FORMULA_NAME} ${VERSION}"
     if [[ "$PUSH" -eq 1 ]]; then
       log "rebasing tap branch before push"

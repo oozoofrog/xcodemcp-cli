@@ -11,10 +11,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/oozoofrog/xcodemcp-cli/internal/agent"
-	"github.com/oozoofrog/xcodemcp-cli/internal/bridge"
-	"github.com/oozoofrog/xcodemcp-cli/internal/doctor"
-	"github.com/oozoofrog/xcodemcp-cli/internal/mcp"
+	"github.com/oozoofrog/xcodecli/internal/agent"
+	"github.com/oozoofrog/xcodecli/internal/bridge"
+	"github.com/oozoofrog/xcodecli/internal/doctor"
+	"github.com/oozoofrog/xcodecli/internal/mcp"
 )
 
 func TestParseCLIDefaultBridge(t *testing.T) {
@@ -28,7 +28,7 @@ func TestParseCLIDefaultBridge(t *testing.T) {
 	if cfg.XcodePID != "123" || cfg.SessionID != "11111111-1111-1111-1111-111111111111" || !cfg.Debug {
 		t.Fatalf("unexpected config: %+v", cfg)
 	}
-	if !strings.Contains(usage, "xcodemcp bridge") {
+	if !strings.Contains(usage, "xcodecli bridge") {
 		t.Fatalf("usage missing bridge help: %q", usage)
 	}
 }
@@ -131,7 +131,7 @@ func TestParseCLIHelp(t *testing.T) {
 
 func TestRootUsageIncludesHumanAndAgentGuidance(t *testing.T) {
 	usage := rootUsage()
-	for _, want := range []string{"START HERE:", "For humans:", "For agents:", "xcodemcp agent guide", "xcodemcp agent demo", "xcodemcp doctor --json", "xcodemcp tool inspect <name> --json"} {
+	for _, want := range []string{"START HERE:", "For humans:", "For agents:", "xcodecli agent guide", "xcodecli agent demo", "xcodecli doctor --json", "xcodecli tool inspect <name> --json"} {
 		if !strings.Contains(usage, want) {
 			t.Fatalf("root usage missing %q: %s", want, usage)
 		}
@@ -497,9 +497,9 @@ func TestRunAgentStatusText(t *testing.T) {
 			return agent.Status{
 				Label:             agent.LaunchAgentLabel,
 				PlistInstalled:    true,
-				PlistPath:         "/tmp/io.oozoofrog.xcodemcp.plist",
-				RegisteredBinary:  "/tmp/xcodemcp",
-				CurrentBinary:     "/tmp/xcodemcp",
+				PlistPath:         "/tmp/io.oozoofrog.xcodecli.plist",
+				RegisteredBinary:  "/tmp/xcodecli",
+				CurrentBinary:     "/tmp/xcodecli",
 				BinaryPathMatches: true,
 				SocketPath:        "/tmp/daemon.sock",
 				SocketReachable:   true,

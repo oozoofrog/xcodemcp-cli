@@ -6,14 +6,18 @@ The format is inspired by [Keep a Changelog](https://keepachangelog.com/en/1.1.0
 
 ## [Unreleased]
 ### Added
-- `agent guide` subcommand for read-only workflow tutoring that maps a request to the recommended xcodemcp tool sequence and prints exact next commands.
+- `agent guide` subcommand for read-only workflow tutoring that maps a request to the recommended xcodecli tool sequence and prints exact next commands.
 - `agent demo` subcommand for a safe read-only onboarding flow that runs `doctor`, lists live MCP tools, calls `XcodeListWindows`, and prints suggested next commands.
-- `scripts/install.sh` for installing `xcodemcp` from a local checkout or directly from GitHub source refs.
+- `scripts/install.sh` for installing `xcodecli` from a local checkout or directly from GitHub source refs.
+- Legacy session migration from `~/Library/Application Support/xcodemcp/session-id` into the new `xcodecli` runtime location.
 
 ### Changed
+- **Breaking rename:** the project, GitHub repository, CLI binary, LaunchAgent runtime identifiers, and Homebrew formula all move from `xcodemcp` to `xcodecli`.
 - Improved first-run onboarding docs and root CLI help with a guide-first path for humans and agents, while keeping `agent demo` as the safe live discovery step.
 - Moved installation guidance near the top of the README and documented both direct GitHub installs and Homebrew installs.
-- `scripts/install.sh` now verifies PATH reachability for the user's login shell and prints shell-specific next steps when `xcodemcp` is not discoverable on PATH.
+- `scripts/install.sh` now verifies PATH reachability for the user's login shell and prints shell-specific next steps when `xcodecli` is not discoverable on PATH.
+- `agent status`, `doctor`, and `agent uninstall` now detect and clean up legacy `xcodemcp` LaunchAgent/support artifacts.
+- Homebrew release automation now publishes `oozoofrog/tap/xcodecli` and removes the legacy `xcodemcp` formula during the rename cutover.
 
 ## [0.2.1] - 2026-03-14
 ### Added
@@ -25,13 +29,13 @@ The format is inspired by [Keep a Changelog](https://keepachangelog.com/en/1.1.0
 - MCP convenience commands: `tools list`, `tool inspect`, and `tool call`.
 - LaunchAgent-backed runtime for long-lived `mcpbridge` sessions used by tools commands.
 - Persistent `MCP_XCODE_SESSION_ID` reuse across runs.
-- First-time agent onboarding docs in `/Volumes/eyedisk/develop/oozoofrog/xcodemcp-cli/AGENTS.md` and `/Volumes/eyedisk/develop/oozoofrog/xcodemcp-cli/docs/agent-quickstart.md`.
+- First-time agent onboarding docs in `AGENTS.md` and `docs/agent-quickstart.md`.
 - JSON output modes for `doctor` and `agent status`.
 - `tool call` payload input via inline JSON, `@file`, and `--json-stdin`.
 - `scripts/build.sh` for repeatable local builds.
 
 ### Changed
-- `xcodemcp` with no arguments now prints help instead of defaulting to raw bridge execution.
+- `xcodecli` with no arguments now prints help instead of defaulting to raw bridge execution.
 - CLI help now includes richer guidance for both humans and agents.
 - Tool command startup and LaunchAgent autostart now honor request timeouts.
 - Agent-only commands no longer create a persistent session file as a side effect.
@@ -47,7 +51,7 @@ The format is inspired by [Keep a Changelog](https://keepachangelog.com/en/1.1.0
 
 ## [0.1.0] - 2026-03-13
 ### Added
-- Initial Go-based `xcodemcp` CLI scaffold.
+- Initial Go-based `xcodecli` CLI scaffold.
 - Raw `bridge` mode for passthrough execution of `xcrun mcpbridge`.
 - `doctor` command for local environment diagnostics.
 - Project metadata, LICENSE, CI, and collaboration templates.

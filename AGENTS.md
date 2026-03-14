@@ -1,4 +1,4 @@
-# Agent quick rules for `xcodemcp`
+# Agent quick rules for `xcodecli`
 
 Use this repository when you need a CLI bridge into Xcode's MCP tools.
 
@@ -6,14 +6,14 @@ Use this repository when you need a CLI bridge into Xcode's MCP tools.
 - macOS only.
 - Xcode must be running.
 - At least one workspace or project window should be open in Xcode before using `tools` commands.
-- The first `tools` request may automatically install a LaunchAgent at `~/Library/LaunchAgents/io.oozoofrog.xcodemcp.plist`.
+- The first `tools` request may automatically install a LaunchAgent at `~/Library/LaunchAgents/io.oozoofrog.xcodecli.plist`.
 
 ## Recommended first-time flow
-1. `./xcodemcp agent guide "build Unicody"`
-2. `./xcodemcp agent demo --json`
-3. `./xcodemcp doctor --json`
-4. `./xcodemcp tools list --json`
-5. `./xcodemcp tool call <name> --json '{...}'`
+1. `./xcodecli agent guide "build Unicody"`
+2. `./xcodecli agent demo --json`
+3. `./xcodecli doctor --json`
+4. `./xcodecli tools list --json`
+5. `./xcodecli tool call <name> --json '{...}'`
 
 ## Workflow guidance first
 - Start with `agent guide` when you already know the user's intent and need to learn the right tool sequence.
@@ -27,5 +27,5 @@ Use this repository when you need a CLI bridge into Xcode's MCP tools.
 
 ## Failure triage
 - Retry with `--debug` on `tools list`, `tool inspect`, or `tool call`.
-- Check `./xcodemcp agent status --json` for LaunchAgent installation, socket reachability, and backend session state.
-- If the agent is wedged, run `./xcodemcp agent stop` or `./xcodemcp agent uninstall` and retry.
+- Check `./xcodecli agent status --json` for LaunchAgent installation, socket reachability, and backend session state.
+- If the agent is wedged, run `./xcodecli agent stop` or `./xcodecli agent uninstall` and retry.

@@ -13,10 +13,10 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/oozoofrog/xcodemcp-cli/internal/agent"
-	"github.com/oozoofrog/xcodemcp-cli/internal/bridge"
-	"github.com/oozoofrog/xcodemcp-cli/internal/doctor"
-	"github.com/oozoofrog/xcodemcp-cli/internal/mcp"
+	"github.com/oozoofrog/xcodecli/internal/agent"
+	"github.com/oozoofrog/xcodecli/internal/bridge"
+	"github.com/oozoofrog/xcodecli/internal/doctor"
+	"github.com/oozoofrog/xcodecli/internal/mcp"
 )
 
 var defaultBridgeCommand = bridge.Command{Path: "xcrun", Args: []string{"mcpbridge"}}
@@ -46,7 +46,7 @@ func run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.
 			fmt.Fprint(stdout, usage)
 			return 0
 		}
-		fmt.Fprintf(stderr, "xcodemcp: %v\n", err)
+		fmt.Fprintf(stderr, "xcodecli: %v\n", err)
 		if usage != "" {
 			fmt.Fprint(stderr, usage)
 		}
@@ -54,13 +54,13 @@ func run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.
 	}
 
 	if runtime.GOOS != "darwin" {
-		fmt.Fprintln(stderr, "xcodemcp: only macOS (darwin) is supported")
+		fmt.Fprintln(stderr, "xcodecli: only macOS (darwin) is supported")
 		return 1
 	}
 
 	agentCfg, err := defaultAgentConfigFunc(defaultMCPCommand, env, stderr)
 	if err != nil {
-		fmt.Fprintf(stderr, "xcodemcp: %v\n", err)
+		fmt.Fprintf(stderr, "xcodecli: %v\n", err)
 		return 1
 	}
 	if cfg.IdleTimeout > 0 {
@@ -71,7 +71,7 @@ func run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.
 	case commandDoctor:
 		resolved, err := resolveEffectiveOptions(env, cfg)
 		if err != nil {
-			fmt.Fprintf(stderr, "xcodemcp: %v\n", err)
+			fmt.Fprintf(stderr, "xcodecli: %v\n", err)
 			return 1
 		}
 		agentStatus, agentStatusErr := defaultAgentStatusFunc(ctx, agentCfg)
@@ -86,7 +86,7 @@ func run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.
 		})
 		if cfg.JSONOutput {
 			if err := writeJSON(stdout, report.JSON()); err != nil {
-				fmt.Fprintf(stderr, "xcodemcp: %v\n", err)
+				fmt.Fprintf(stderr, "xcodecli: %v\n", err)
 				return 1
 			}
 		} else {
@@ -99,7 +99,7 @@ func run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.
 	case commandBridge:
 		resolved, err := resolveEffectiveOptions(env, cfg)
 		if err != nil {
-			fmt.Fprintf(stderr, "xcodemcp: %v\n", err)
+			fmt.Fprintf(stderr, "xcodecli: %v\n", err)
 			return 1
 		}
 		if cfg.Debug {
@@ -107,7 +107,7 @@ func run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.
 		}
 		effective := resolved.EnvOptions
 		if err := bridge.ValidateEnvOptions(effective); err != nil {
-			fmt.Fprintf(stderr, "xcodemcp: invalid bridge options: %v\n", err)
+			fmt.Fprintf(stderr, "xcodecli: invalid bridge options: %v\n", err)
 			return 1
 		}
 
@@ -120,14 +120,14 @@ func run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.
 			Debug:   cfg.Debug,
 		})
 		if err != nil {
-			fmt.Fprintf(stderr, "xcodemcp: %v\n", err)
+			fmt.Fprintf(stderr, "xcodecli: %v\n", err)
 			return 1
 		}
 		return result.ExitCode
 	case commandToolsList:
 		resolved, err := resolveEffectiveOptions(env, cfg)
 		if err != nil {
-			fmt.Fprintf(stderr, "xcodemcp: %v\n", err)
+			fmt.Fprintf(stderr, "xcodecli: %v\n", err)
 			return 1
 		}
 		if cfg.Debug {
@@ -135,7 +135,7 @@ func run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.
 		}
 		effective := resolved.EnvOptions
 		if err := bridge.ValidateEnvOptions(effective); err != nil {
-			fmt.Fprintf(stderr, "xcodemcp: invalid MCP options: %v\n", err)
+			fmt.Fprintf(stderr, "xcodecli: invalid MCP options: %v\n", err)
 			return 1
 		}
 		requestCtx, cancel := requestTimeoutContext(ctx, cfg.Timeout)
@@ -143,12 +143,12 @@ func run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.
 		request := agentRequest(env, effective, cfg)
 		tools, err := defaultToolsListFunc(requestCtx, agentCfg, request)
 		if err != nil {
-			fmt.Fprintf(stderr, "xcodemcp: %v\n", err)
+			fmt.Fprintf(stderr, "xcodecli: %v\n", err)
 			return 1
 		}
 		if cfg.JSONOutput {
 			if err := writeJSON(stdout, tools); err != nil {
-				fmt.Fprintf(stderr, "xcodemcp: %v\n", err)
+				fmt.Fprintf(stderr, "xcodecli: %v\n", err)
 				return 1
 			}
 			return 0
@@ -166,7 +166,7 @@ func run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.
 	case commandToolInspect:
 		resolved, err := resolveEffectiveOptions(env, cfg)
 		if err != nil {
-			fmt.Fprintf(stderr, "xcodemcp: %v\n", err)
+			fmt.Fprintf(stderr, "xcodecli: %v\n", err)
 			return 1
 		}
 		if cfg.Debug {
@@ -174,7 +174,7 @@ func run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.
 		}
 		effective := resolved.EnvOptions
 		if err := bridge.ValidateEnvOptions(effective); err != nil {
-			fmt.Fprintf(stderr, "xcodemcp: invalid MCP options: %v\n", err)
+			fmt.Fprintf(stderr, "xcodecli: invalid MCP options: %v\n", err)
 			return 1
 		}
 		requestCtx, cancel := requestTimeoutContext(ctx, cfg.Timeout)
@@ -182,30 +182,30 @@ func run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.
 		request := agentRequest(env, effective, cfg)
 		tools, err := defaultToolsListFunc(requestCtx, agentCfg, request)
 		if err != nil {
-			fmt.Fprintf(stderr, "xcodemcp: %v\n", err)
+			fmt.Fprintf(stderr, "xcodecli: %v\n", err)
 			return 1
 		}
 		tool, found := findToolByName(tools, cfg.ToolName)
 		if !found {
-			fmt.Fprintf(stderr, "xcodemcp: tool not found: %s\n", cfg.ToolName)
+			fmt.Fprintf(stderr, "xcodecli: tool not found: %s\n", cfg.ToolName)
 			return 1
 		}
 		if cfg.JSONOutput {
 			if err := writeJSON(stdout, tool); err != nil {
-				fmt.Fprintf(stderr, "xcodemcp: %v\n", err)
+				fmt.Fprintf(stderr, "xcodecli: %v\n", err)
 				return 1
 			}
 			return 0
 		}
 		if err := writeToolInspect(stdout, tool); err != nil {
-			fmt.Fprintf(stderr, "xcodemcp: %v\n", err)
+			fmt.Fprintf(stderr, "xcodecli: %v\n", err)
 			return 1
 		}
 		return 0
 	case commandToolCall:
 		resolved, err := resolveEffectiveOptions(env, cfg)
 		if err != nil {
-			fmt.Fprintf(stderr, "xcodemcp: %v\n", err)
+			fmt.Fprintf(stderr, "xcodecli: %v\n", err)
 			return 1
 		}
 		if cfg.Debug {
@@ -213,12 +213,12 @@ func run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.
 		}
 		effective := resolved.EnvOptions
 		if err := bridge.ValidateEnvOptions(effective); err != nil {
-			fmt.Fprintf(stderr, "xcodemcp: invalid MCP options: %v\n", err)
+			fmt.Fprintf(stderr, "xcodecli: invalid MCP options: %v\n", err)
 			return 1
 		}
 		arguments, err := resolveToolArguments(stdin, cfg)
 		if err != nil {
-			fmt.Fprintf(stderr, "xcodemcp: %v\n", err)
+			fmt.Fprintf(stderr, "xcodecli: %v\n", err)
 			return 1
 		}
 		requestCtx, cancel := requestTimeoutContext(ctx, cfg.Timeout)
@@ -226,11 +226,11 @@ func run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.
 		request := agentRequest(env, effective, cfg)
 		result, err := defaultToolCallFunc(requestCtx, agentCfg, request, cfg.ToolName, arguments)
 		if err != nil {
-			fmt.Fprintf(stderr, "xcodemcp: %v\n", err)
+			fmt.Fprintf(stderr, "xcodecli: %v\n", err)
 			return 1
 		}
 		if err := writeJSON(stdout, result.Result); err != nil {
-			fmt.Fprintf(stderr, "xcodemcp: %v\n", err)
+			fmt.Fprintf(stderr, "xcodecli: %v\n", err)
 			return 1
 		}
 		if result.IsError {
@@ -244,12 +244,12 @@ func run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.
 	case commandAgentStatus:
 		status, err := defaultAgentStatusFunc(ctx, agentCfg)
 		if err != nil {
-			fmt.Fprintf(stderr, "xcodemcp: %v\n", err)
+			fmt.Fprintf(stderr, "xcodecli: %v\n", err)
 			return 1
 		}
 		if cfg.JSONOutput {
 			if err := writeJSON(stdout, status); err != nil {
-				fmt.Fprintf(stderr, "xcodemcp: %v\n", err)
+				fmt.Fprintf(stderr, "xcodecli: %v\n", err)
 				return 1
 			}
 		} else {
@@ -258,28 +258,28 @@ func run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.
 		return 0
 	case commandAgentStop:
 		if err := defaultAgentStopFunc(ctx, agentCfg); err != nil {
-			fmt.Fprintf(stderr, "xcodemcp: %v\n", err)
+			fmt.Fprintf(stderr, "xcodecli: %v\n", err)
 			return 1
 		}
 		fmt.Fprintln(stdout, "stopped LaunchAgent process if it was running")
 		return 0
 	case commandAgentUninstall:
 		if err := defaultAgentUninstallFunc(ctx, agentCfg); err != nil {
-			fmt.Fprintf(stderr, "xcodemcp: %v\n", err)
+			fmt.Fprintf(stderr, "xcodecli: %v\n", err)
 			return 1
 		}
-		fmt.Fprintln(stdout, "removed LaunchAgent plist and local agent runtime files")
+		fmt.Fprintln(stdout, "removed xcodecli LaunchAgent/runtime files and any legacy xcodemcp artifacts")
 		return 0
 	case commandAgentRun:
 		signalCtx, cancel := signal.NotifyContext(ctx, syscall.SIGINT, syscall.SIGTERM, syscall.SIGHUP)
 		defer cancel()
 		if err := defaultAgentRunFunc(signalCtx, agentCfg); err != nil {
-			fmt.Fprintf(stderr, "xcodemcp: %v\n", err)
+			fmt.Fprintf(stderr, "xcodecli: %v\n", err)
 			return 1
 		}
 		return 0
 	default:
-		fmt.Fprintf(stderr, "xcodemcp: unsupported command %q\n", cfg.Command)
+		fmt.Fprintf(stderr, "xcodecli: unsupported command %q\n", cfg.Command)
 		return 1
 	}
 }
@@ -366,6 +366,8 @@ func logResolvedSession(w io.Writer, resolved bridge.ResolvedOptions) {
 		fmt.Fprintf(w, "[debug] using persisted MCP_XCODE_SESSION_ID %s from %s\n", resolved.SessionID, resolved.SessionPath)
 	case bridge.SessionSourceGenerated:
 		fmt.Fprintf(w, "[debug] generated persistent MCP_XCODE_SESSION_ID %s at %s\n", resolved.SessionID, resolved.SessionPath)
+	case bridge.SessionSourceMigrated:
+		fmt.Fprintf(w, "[debug] migrated persistent MCP_XCODE_SESSION_ID %s into %s from legacy xcodemcp storage\n", resolved.SessionID, resolved.SessionPath)
 	}
 }
 
@@ -390,7 +392,7 @@ func formatAgentStatus(status agent.Status) string {
 	if status.SocketReachable {
 		socketText = "yes"
 	}
-	return fmt.Sprintf("xcodemcp agent\n\nlabel: %s\nplist installed: %t\nplist path: %s\nregistered binary: %s\ncurrent binary: %s\nbinary matches: %s\nsocket path: %s\nsocket reachable: %s\nrunning: %s\npid: %d\nidle timeout: %s\nbackend sessions: %d\n",
+	return fmt.Sprintf("xcodecli agent\n\nlabel: %s\nplist installed: %t\nplist path: %s\nregistered binary: %s\ncurrent binary: %s\nbinary matches: %s\nsocket path: %s\nsocket reachable: %s\nrunning: %s\npid: %d\nidle timeout: %s\nbackend sessions: %d\nlegacy label: %s\nlegacy plist installed: %t\nlegacy plist path: %s\nlegacy support dir: %s (exists=%t)\nlegacy session path: %s (exists=%t)\nlegacy socket path: %s (exists=%t)\n",
 		status.Label,
 		status.PlistInstalled,
 		status.PlistPath,
@@ -403,6 +405,15 @@ func formatAgentStatus(status agent.Status) string {
 		status.PID,
 		status.IdleTimeout,
 		status.BackendSessions,
+		status.Legacy.Label,
+		status.Legacy.PlistInstalled,
+		status.Legacy.PlistPath,
+		status.Legacy.SupportDir,
+		status.Legacy.SupportDirExists,
+		status.Legacy.SessionPath,
+		status.Legacy.SessionFileExists,
+		status.Legacy.SocketPath,
+		status.Legacy.SocketExists,
 	)
 }
 

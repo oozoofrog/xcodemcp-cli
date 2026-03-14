@@ -1,11 +1,11 @@
-# xcodemcp agent quickstart
+# xcodecli agent quickstart
 
-This guide is for a first-time agent or automation that needs to discover and call Xcode MCP tools through `xcodemcp`.
+This guide is for a first-time agent or automation that needs to discover and call Xcode MCP tools through `xcodecli`.
 
 ## 1. Build the CLI
 
 ```bash
-cd /Volumes/eyedisk/develop/oozoofrog/xcodemcp-cli
+cd /path/to/xcodecli
 ./scripts/build.sh
 ```
 
@@ -14,13 +14,13 @@ cd /Volumes/eyedisk/develop/oozoofrog/xcodemcp-cli
 If you already know the request, start with `agent guide`:
 
 ```bash
-./xcodemcp agent guide "build Unicody"
-./xcodemcp agent guide "run tests for Unicody"
-./xcodemcp agent guide "read KeyboardState.swift"
-./xcodemcp agent guide "search for AdManager"
-./xcodemcp agent guide "update KeyboardState.swift"
-./xcodemcp agent guide "diagnose build errors"
-./xcodemcp agent guide --json
+./xcodecli agent guide "build Unicody"
+./xcodecli agent guide "run tests for Unicody"
+./xcodecli agent guide "read KeyboardState.swift"
+./xcodecli agent guide "search for AdManager"
+./xcodecli agent guide "update KeyboardState.swift"
+./xcodecli agent guide "diagnose build errors"
+./xcodecli agent guide --json
 ```
 
 What this does:
@@ -32,8 +32,8 @@ What this does:
 ## 3. Fastest safe live demo
 
 ```bash
-./xcodemcp agent demo
-./xcodemcp agent demo --json
+./xcodecli agent demo
+./xcodecli agent demo --json
 ```
 
 What this does:
@@ -47,8 +47,8 @@ What this does:
 ## 4. Check the environment
 
 ```bash
-./xcodemcp doctor --json
-./xcodemcp agent status --json
+./xcodecli doctor --json
+./xcodecli agent status --json
 ```
 
 Look for:
@@ -59,17 +59,17 @@ Look for:
 ## 5. Discover available tools
 
 ```bash
-./xcodemcp tools list
-./xcodemcp tools list --json
+./xcodecli tools list
+./xcodecli tools list --json
 ```
 
-If this is the first `tools` request, `xcodemcp` may install and bootstrap a per-user LaunchAgent automatically.
+If this is the first `tools` request, `xcodecli` may install and bootstrap a per-user LaunchAgent automatically.
 
 ## 6. Inspect one tool
 
 ```bash
-./xcodemcp tool inspect XcodeListWindows
-./xcodemcp tool inspect XcodeListWindows --json
+./xcodecli tool inspect XcodeListWindows
+./xcodecli tool inspect XcodeListWindows --json
 ```
 
 Use `tool inspect` when you need schema reassurance. For the common workflows above, `agent guide` should usually tell you what to call without making this the first step.
@@ -79,7 +79,7 @@ Use `tool inspect` when you need schema reassurance. For the common workflows ab
 Inline JSON:
 
 ```bash
-./xcodemcp tool call XcodeListWindows --json '{}'
+./xcodecli tool call XcodeListWindows --json '{}'
 ```
 
 Read the payload from a file:
@@ -88,13 +88,13 @@ Read the payload from a file:
 cat > /tmp/payload.json <<'JSON'
 {"scheme":"Demo"}
 JSON
-./xcodemcp tool call BuildProject --json @/tmp/payload.json
+./xcodecli tool call BuildProject --json @/tmp/payload.json
 ```
 
 Read the payload from stdin:
 
 ```bash
-printf '{}' | ./xcodemcp tool call XcodeListWindows --json-stdin
+printf '{}' | ./xcodecli tool call XcodeListWindows --json-stdin
 ```
 
 ## 8. End-to-end read-only example
@@ -102,9 +102,9 @@ printf '{}' | ./xcodemcp tool call XcodeListWindows --json-stdin
 Use the `tabIdentifier` returned by `XcodeListWindows` to continue the flow:
 
 ```bash
-./xcodemcp tool call XcodeListWindows --json '{}'
-./xcodemcp tool call XcodeLS --json '{"tabIdentifier":"<tabIdentifier from above>","path":""}'
-./xcodemcp tool call XcodeRead --json '{"tabIdentifier":"<tabIdentifier from above>","filePath":"<path from XcodeLS>"}'
+./xcodecli tool call XcodeListWindows --json '{}'
+./xcodecli tool call XcodeLS --json '{"tabIdentifier":"<tabIdentifier from above>","path":""}'
+./xcodecli tool call XcodeRead --json '{"tabIdentifier":"<tabIdentifier from above>","filePath":"<path from XcodeLS>"}'
 ```
 
 If you want the next mutating step after discovery, that is where you would choose something like `BuildProject` or `RunAllTests`.
@@ -114,16 +114,20 @@ If you want the next mutating step after discovery, that is where you would choo
 ### The tool call times out
 - Verify Xcode is open and a workspace/project window is visible.
 - Retry with `--debug`.
-- Re-run `./xcodemcp doctor --json`.
+- Re-run `./xcodecli doctor --json`.
 
 ### The LaunchAgent looks stale
 ```bash
-./xcodemcp agent status --json
-./xcodemcp agent stop
-./xcodemcp agent uninstall
+./xcodecli agent status --json
+./xcodecli agent stop
+./xcodecli agent uninstall
 ```
 
 Then retry `tools list` or `tool inspect`.
+
+### Legacy rename cleanup
+- If you previously used `xcodemcp`, run `./xcodecli agent uninstall` once to remove old LaunchAgent/runtime artifacts.
+- `./xcodecli doctor --json` and `./xcodecli agent status --json` will tell you whether any legacy `xcodemcp` files still exist.
 
 ### The payload is large or reused often
 Prefer `--json @file` over a huge inline string.

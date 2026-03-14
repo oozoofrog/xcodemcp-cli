@@ -17,6 +17,7 @@ const (
 	SessionSourceEnv       SessionSource = "env"
 	SessionSourcePersisted SessionSource = "persisted"
 	SessionSourceGenerated SessionSource = "generated"
+	SessionSourceMigrated  SessionSource = "migrated"
 )
 
 type ResolvedOptions struct {
@@ -30,7 +31,15 @@ func DefaultSessionFilePath() (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("resolve home directory for session storage: %w", err)
 	}
-	return filepath.Join(homeDir, "Library", "Application Support", "xcodemcp", "session-id"), nil
+	return resolveSessionFilePath(homeDir, "xcodecli"), nil
+}
+
+func DefaultLegacySessionFilePath() (string, error) {
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		return "", fmt.Errorf("resolve home directory for legacy session storage: %w", err)
+	}
+	return resolveSessionFilePath(homeDir, "xcodemcp"), nil
 }
 
 func ResolveOptions(baseEnv []string, overrides EnvOptions, sessionPath string) (ResolvedOptions, error) {
@@ -74,7 +83,17 @@ func loadOrCreateSessionID(path string) (string, SessionSource, error) {
 			return sessionID, SessionSourcePersisted, nil
 		}
 	case errors.Is(err, os.ErrNotExist):
-		// Create below.
+		defaultPath, defaultErr := DefaultSessionFilePath()
+		if defaultErr == nil && path == defaultPath {
+			legacyPath, legacyErr := DefaultLegacySessionFilePath()
+			if legacyErr == nil && legacyPath != "" && legacyPath != path {
+				if legacySessionID, migrated, migrateErr := migrateLegacySessionID(legacyPath, path); migrateErr != nil {
+					return "", SessionSourceUnset, migrateErr
+				} else if migrated {
+					return legacySessionID, SessionSourceMigrated, nil
+				}
+			}
+		}
 	default:
 		return "", SessionSourceUnset, fmt.Errorf("read persistent MCP_XCODE_SESSION_ID from %s: %w", path, err)
 	}
@@ -97,6 +116,28 @@ func persistSessionID(path, sessionID string) error {
 		return fmt.Errorf("write persistent MCP_XCODE_SESSION_ID to %s: %w", path, err)
 	}
 	return nil
+}
+
+func migrateLegacySessionID(legacyPath, newPath string) (string, bool, error) {
+	data, err := os.ReadFile(legacyPath)
+	if errors.Is(err, os.ErrNotExist) {
+		return "", false, nil
+	}
+	if err != nil {
+		return "", false, fmt.Errorf("read legacy MCP_XCODE_SESSION_ID from %s: %w", legacyPath, err)
+	}
+	sessionID := strings.TrimSpace(string(data))
+	if !IsValidUUID(sessionID) {
+		return "", false, nil
+	}
+	if err := persistSessionID(newPath, sessionID); err != nil {
+		return "", false, err
+	}
+	return sessionID, true, nil
+}
+
+func resolveSessionFilePath(homeDir, supportDirName string) string {
+	return filepath.Join(homeDir, "Library", "Application Support", supportDirName, "session-id")
 }
 
 func NewUUID() (string, error) {

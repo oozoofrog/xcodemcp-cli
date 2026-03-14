@@ -1,24 +1,24 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-SOURCE_REPO="oozoofrog/xcodemcp-cli"
+SOURCE_REPO="oozoofrog/xcodecli"
 DEFAULT_REF="main"
 
 usage() {
   cat <<'USAGE'
 Usage:
   ./scripts/install.sh [--bin-dir PATH] [--ref REF]
-  curl -fsSL https://raw.githubusercontent.com/oozoofrog/xcodemcp-cli/main/scripts/install.sh | bash
-  curl -fsSL https://raw.githubusercontent.com/oozoofrog/xcodemcp-cli/main/scripts/install.sh | bash -s -- --ref v0.2.1
+  curl -fsSL https://raw.githubusercontent.com/oozoofrog/xcodecli/main/scripts/install.sh | bash
+  curl -fsSL https://raw.githubusercontent.com/oozoofrog/xcodecli/main/scripts/install.sh | bash -s -- --ref v0.3.0
 
 Options:
-  --bin-dir PATH   Install directory for the xcodemcp binary (default: $HOME/.local/bin)
+  --bin-dir PATH   Install directory for the xcodecli binary (default: $HOME/.local/bin)
   --ref REF        GitHub branch or tag to install when running outside a local checkout (default: main)
   -h, --help       Show help
 
 Environment:
   BIN_DIR          Same as --bin-dir
-  XCODEMCP_REF     Same as --ref
+  XCODECLI_REF     Same as --ref
 
 Behavior:
   - When run inside a local checkout and no --ref is provided, builds from the current working tree.
@@ -98,18 +98,27 @@ run_shell_path_check() {
   local shell_path="$1"
   local shell_name
   shell_name="$(basename "$shell_path")"
+  local marker_start="__XCODECLI_PATH_START__"
+  local marker_end="__XCODECLI_PATH_END__"
+  local raw_output=""
 
   case "$shell_name" in
     zsh|bash)
-      "$shell_path" -lic 'command -v xcodemcp || true' 2>/dev/null | sed -E $'s/\x1b\\[[0-9;]*[[:alpha:]]//g' | awk 'NF { line = $0 } END { print line }'
+      raw_output="$("$shell_path" -lic "printf '%s\n' '${marker_start}'; command -v xcodecli || true; printf '%s\n' '${marker_end}'" 2>/dev/null | sed -E $'s/\x1b\\[[0-9;]*[[:alpha:]]//g')"
       ;;
     fish)
-      "$shell_path" -lc 'command -v xcodemcp; true' 2>/dev/null | sed -E $'s/\x1b\\[[0-9;]*[[:alpha:]]//g' | awk 'NF { line = $0 } END { print line }'
+      raw_output="$("$shell_path" -lc "printf '%s\n' '${marker_start}'; command -v xcodecli; true; printf '%s\n' '${marker_end}'" 2>/dev/null | sed -E $'s/\x1b\\[[0-9;]*[[:alpha:]]//g')"
       ;;
     *)
       return 1
       ;;
   esac
+
+  awk -v start="$marker_start" -v end="$marker_end" '
+    $0 == start { capture = 1; next }
+    $0 == end { capture = 0; exit }
+    capture && NF { print; exit }
+  ' <<< "$raw_output"
 }
 
 print_path_guidance() {
@@ -149,18 +158,18 @@ report_path_status() {
   log "checking PATH integration"
 
   local current_hit=""
-  current_hit="$(command -v xcodemcp 2>/dev/null || true)"
+  current_hit="$(command -v xcodecli 2>/dev/null || true)"
   if [[ -n "$current_hit" ]]; then
     local current_resolved=""
     current_resolved="$(resolve_path "$current_hit" 2>/dev/null || true)"
     if [[ "$current_resolved" == "$install_resolved" ]]; then
-      log "current session PATH resolves xcodemcp -> ${current_resolved}"
+      log "current session PATH resolves xcodecli -> ${current_resolved}"
     else
-      log "warning: current session PATH resolves xcodemcp -> ${current_hit}"
+      log "warning: current session PATH resolves xcodecli -> ${current_hit}"
       log "warning: newly installed binary is ${install_resolved}"
     fi
   else
-    log "current session PATH does not yet resolve xcodemcp"
+    log "current session PATH does not yet resolve xcodecli"
   fi
 
   local preferred_shell=""
@@ -179,25 +188,25 @@ report_path_status() {
     local shell_resolved=""
     shell_resolved="$(resolve_path "$shell_hit" 2>/dev/null || true)"
     if [[ "$shell_resolved" == "$install_resolved" ]]; then
-      log "${shell_name} login shell resolves xcodemcp -> ${shell_resolved}"
+      log "${shell_name} login shell resolves xcodecli -> ${shell_resolved}"
       if [[ -z "$current_hit" ]]; then
         log "open a new terminal window or restart your shell to pick up the updated PATH"
       fi
       return 0
     fi
-    log "warning: ${shell_name} login shell resolves xcodemcp -> ${shell_hit}"
+    log "warning: ${shell_name} login shell resolves xcodecli -> ${shell_hit}"
     log "warning: newly installed binary is ${install_resolved}"
     log "you may need to move ${install_bin_dir} earlier in PATH"
     print_path_guidance "$shell_name" "$install_bin_dir"
     return 0
   fi
 
-  log "warning: ${shell_name} login shell could not find xcodemcp on PATH"
+  log "warning: ${shell_name} login shell could not find xcodecli on PATH"
   print_path_guidance "$shell_name" "$install_bin_dir"
 }
 
 BIN_DIR="${BIN_DIR:-$HOME/.local/bin}"
-REF="${XCODEMCP_REF:-}"
+REF="${XCODECLI_REF:-}"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -221,7 +230,7 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-[[ "$(uname -s)" == "Darwin" ]] || fail "xcodemcp only supports macOS"
+[[ "$(uname -s)" == "Darwin" ]] || fail "xcodecli only supports macOS"
 
 require_cmd go
 
@@ -256,7 +265,7 @@ else
   require_cmd tar
   REF="${REF:-$DEFAULT_REF}"
   ARCHIVE_URL="$(resolve_archive_url "$REF")"
-  WORK_DIR="$(mktemp -d "${TMPDIR:-/tmp}/xcodemcp-install-XXXXXX")"
+  WORK_DIR="$(mktemp -d "${TMPDIR:-/tmp}/xcodecli-install-XXXXXX")"
   TARBALL_PATH="${WORK_DIR}/source.tar.gz"
   log "downloading ${ARCHIVE_URL}"
   curl -fsSL "$ARCHIVE_URL" -o "$TARBALL_PATH"
@@ -268,13 +277,13 @@ else
 fi
 
 INSTALL_BIN_DIR="$(mkdir -p "$BIN_DIR" && cd "$BIN_DIR" >/dev/null 2>&1 && pwd)"
-TEMP_OUTPUT="${WORK_DIR:-${TMPDIR:-/tmp}}/xcodemcp"
+TEMP_OUTPUT="${WORK_DIR:-${TMPDIR:-/tmp}}/xcodecli"
 rm -f "$TEMP_OUTPUT"
 
-log "building xcodemcp"
+log "building xcodecli"
 "${BUILD_ROOT}/scripts/build.sh" "$TEMP_OUTPUT"
 
-INSTALL_PATH="${INSTALL_BIN_DIR}/xcodemcp"
+INSTALL_PATH="${INSTALL_BIN_DIR}/xcodecli"
 log "installing to ${INSTALL_PATH}"
 install -m 0755 "$TEMP_OUTPUT" "$INSTALL_PATH"
 

@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/oozoofrog/xcodemcp-cli/internal/agent"
+	"github.com/oozoofrog/xcodecli/internal/agent"
 )
 
 type commandName string
@@ -53,11 +53,11 @@ func parseCLI(args []string) (cliConfig, string, error) {
 	case "help", "-h", "--help":
 		return parseHelp(args[1:])
 	case string(commandBridge):
-		cfg, err := parseBridgeFlags("xcodemcp bridge", args[1:])
+		cfg, err := parseBridgeFlags("xcodecli bridge", args[1:])
 		cfg.Command = commandBridge
 		return cfg, bridgeUsage(), err
 	case string(commandDoctor):
-		cfg, err := parseDoctorFlags("xcodemcp doctor", args[1:])
+		cfg, err := parseDoctorFlags("xcodecli doctor", args[1:])
 		cfg.Command = commandDoctor
 		return cfg, doctorUsage(), err
 	case "tools":
@@ -68,7 +68,7 @@ func parseCLI(args []string) (cliConfig, string, error) {
 		return parseAgentCLI(args[1:])
 	default:
 		if strings.HasPrefix(args[0], "-") {
-			cfg, err := parseBridgeFlags("xcodemcp", args)
+			cfg, err := parseBridgeFlags("xcodecli", args)
 			cfg.Command = commandBridge
 			return cfg, bridgeUsage(), err
 		}
@@ -134,7 +134,7 @@ func parseToolsCLI(args []string) (cliConfig, string, error) {
 	}
 	switch args[0] {
 	case "list":
-		cfg, err := parseToolsListFlags("xcodemcp tools list", args[1:])
+		cfg, err := parseToolsListFlags("xcodecli tools list", args[1:])
 		cfg.Command = commandToolsList
 		return cfg, toolsListUsage(), err
 	default:
@@ -148,11 +148,11 @@ func parseToolCLI(args []string) (cliConfig, string, error) {
 	}
 	switch args[0] {
 	case "call":
-		cfg, err := parseToolCallFlags("xcodemcp tool call", args[1:])
+		cfg, err := parseToolCallFlags("xcodecli tool call", args[1:])
 		cfg.Command = commandToolCall
 		return cfg, toolCallUsage(), err
 	case "inspect":
-		cfg, err := parseToolInspectFlags("xcodemcp tool inspect", args[1:])
+		cfg, err := parseToolInspectFlags("xcodecli tool inspect", args[1:])
 		cfg.Command = commandToolInspect
 		return cfg, toolInspectUsage(), err
 	default:
@@ -166,27 +166,27 @@ func parseAgentCLI(args []string) (cliConfig, string, error) {
 	}
 	switch args[0] {
 	case "guide":
-		cfg, err := parseAgentGuideFlags("xcodemcp agent guide", args[1:])
+		cfg, err := parseAgentGuideFlags("xcodecli agent guide", args[1:])
 		cfg.Command = commandAgentGuide
 		return cfg, agentGuideUsage(), err
 	case "demo":
-		cfg, err := parseAgentDemoFlags("xcodemcp agent demo", args[1:])
+		cfg, err := parseAgentDemoFlags("xcodecli agent demo", args[1:])
 		cfg.Command = commandAgentDemo
 		return cfg, agentDemoUsage(), err
 	case "status":
-		cfg, err := parseAgentStatusFlags("xcodemcp agent status", args[1:])
+		cfg, err := parseAgentStatusFlags("xcodecli agent status", args[1:])
 		cfg.Command = commandAgentStatus
 		return cfg, agentStatusUsage(), err
 	case "stop":
-		cfg, err := parseAgentSimpleFlags("xcodemcp agent stop", args[1:])
+		cfg, err := parseAgentSimpleFlags("xcodecli agent stop", args[1:])
 		cfg.Command = commandAgentStop
 		return cfg, agentStopUsage(), err
 	case "uninstall":
-		cfg, err := parseAgentSimpleFlags("xcodemcp agent uninstall", args[1:])
+		cfg, err := parseAgentSimpleFlags("xcodecli agent uninstall", args[1:])
 		cfg.Command = commandAgentUninstall
 		return cfg, agentUninstallUsage(), err
 	case "run":
-		cfg, err := parseAgentRunFlags("xcodemcp agent run", args[1:])
+		cfg, err := parseAgentRunFlags("xcodecli agent run", args[1:])
 		cfg.Command = commandAgentRun
 		return cfg, agentRunUsage(), err
 	default:
@@ -526,24 +526,24 @@ func newFlagSet(name string) *flag.FlagSet {
 }
 
 func rootUsage() string {
-	return `xcodemcp wraps xcrun mcpbridge for local macOS use.
+	return `xcodecli wraps xcrun mcpbridge for local macOS use.
 
 START HERE:
   For humans:
-    1. xcodemcp agent guide "build Unicody"
-    2. xcodemcp agent demo
-    3. xcodemcp doctor --json
-    4. xcodemcp tools list
-    5. xcodemcp tool call XcodeListWindows --json '{}'
+    1. xcodecli agent guide "build Unicody"
+    2. xcodecli agent demo
+    3. xcodecli doctor --json
+    4. xcodecli tools list
+    5. xcodecli tool call XcodeListWindows --json '{}'
 
   For agents:
-    - Start with a workflow tutor via "xcodemcp agent guide <intent> --json".
-    - Run a safe live onboarding demo with "xcodemcp agent demo --json".
-    - Discover command shapes with "xcodemcp help <command>".
-    - Discover runtime health with "xcodemcp doctor --json".
-    - Discover LaunchAgent state with "xcodemcp agent status --json".
-    - Discover available tools with "xcodemcp tools list --json".
-    - Discover per-tool schema with "xcodemcp tool inspect <name> --json".
+    - Start with a workflow tutor via "xcodecli agent guide <intent> --json".
+    - Run a safe live onboarding demo with "xcodecli agent demo --json".
+    - Discover command shapes with "xcodecli help <command>".
+    - Discover runtime health with "xcodecli doctor --json".
+    - Discover LaunchAgent state with "xcodecli agent status --json".
+    - Discover available tools with "xcodecli tools list --json".
+    - Discover per-tool schema with "xcodecli tool inspect <name> --json".
 
 RUNTIME MODEL:
   - "bridge" is raw passthrough to xcrun mcpbridge.
@@ -552,17 +552,17 @@ RUNTIME MODEL:
   - Xcode should be running, with at least one workspace/project window open.
 
 USAGE:
-  xcodemcp [--xcode-pid PID] [--session-id UUID] [--debug]
-  xcodemcp bridge [--xcode-pid PID] [--session-id UUID] [--debug]
-  xcodemcp doctor [--json] [--xcode-pid PID] [--session-id UUID]
-  xcodemcp tools list [--json] [--timeout 30s] [--xcode-pid PID] [--session-id UUID] [--debug]
-  xcodemcp tool inspect <name> [--json] [--xcode-pid PID] [--session-id UUID] [--debug]
-  xcodemcp tool call <name> (--json '{...}' | --json @payload.json | --json-stdin) [--timeout 30s] [--xcode-pid PID] [--session-id UUID] [--debug]
-  xcodemcp agent guide [<intent>] [--json] [--timeout 30s] [--xcode-pid PID] [--session-id UUID] [--debug]
-  xcodemcp agent demo [--json] [--timeout 30s] [--xcode-pid PID] [--session-id UUID] [--debug]
-  xcodemcp agent status [--json]
-  xcodemcp agent stop
-  xcodemcp agent uninstall
+  xcodecli [--xcode-pid PID] [--session-id UUID] [--debug]
+  xcodecli bridge [--xcode-pid PID] [--session-id UUID] [--debug]
+  xcodecli doctor [--json] [--xcode-pid PID] [--session-id UUID]
+  xcodecli tools list [--json] [--timeout 30s] [--xcode-pid PID] [--session-id UUID] [--debug]
+  xcodecli tool inspect <name> [--json] [--xcode-pid PID] [--session-id UUID] [--debug]
+  xcodecli tool call <name> (--json '{...}' | --json @payload.json | --json-stdin) [--timeout 30s] [--xcode-pid PID] [--session-id UUID] [--debug]
+  xcodecli agent guide [<intent>] [--json] [--timeout 30s] [--xcode-pid PID] [--session-id UUID] [--debug]
+  xcodecli agent demo [--json] [--timeout 30s] [--xcode-pid PID] [--session-id UUID] [--debug]
+  xcodecli agent status [--json]
+  xcodecli agent stop
+  xcodecli agent uninstall
 
 COMMANDS:
   bridge    Run raw STDIO passthrough to xcrun mcpbridge
@@ -571,7 +571,7 @@ COMMANDS:
   tool      Convenience commands for inspecting or calling a tool
   agent     Inspect or manage the LaunchAgent used by tools commands
 
-Use "xcodemcp help <command>" for command-specific help.
+Use "xcodecli help <command>" for command-specific help.
 `
 }
 
@@ -580,8 +580,8 @@ func bridgeUsage() string {
 Use this when you already have an MCP-aware client and need raw transport.
 
 USAGE:
-  xcodemcp [--xcode-pid PID] [--session-id UUID] [--debug]
-  xcodemcp bridge [--xcode-pid PID] [--session-id UUID] [--debug]
+  xcodecli [--xcode-pid PID] [--session-id UUID] [--debug]
+  xcodecli bridge [--xcode-pid PID] [--session-id UUID] [--debug]
 
 FLAGS:
   --xcode-pid PID     Override MCP_XCODE_PID
@@ -596,7 +596,7 @@ func doctorUsage() string {
 Prefer --json when another tool or agent needs to parse the result.
 
 USAGE:
-  xcodemcp doctor [--json] [--xcode-pid PID] [--session-id UUID]
+  xcodecli doctor [--json] [--xcode-pid PID] [--session-id UUID]
 
 FLAGS:
   --json              Print the diagnostic report as pretty JSON
@@ -611,7 +611,7 @@ func toolsUsage() string {
 Inspect a tool before calling it if you need its schema or description.
 
 USAGE:
-  xcodemcp tools list [--json] [--timeout 30s] [--xcode-pid PID] [--session-id UUID] [--debug]
+  xcodecli tools list [--json] [--timeout 30s] [--xcode-pid PID] [--session-id UUID] [--debug]
 
 SUBCOMMANDS:
   list      List MCP tools exposed through xcrun mcpbridge via the LaunchAgent
@@ -623,7 +623,7 @@ func toolsListUsage() string {
 This is the primary entrypoint for both humans and agents to learn what is available.
 
 USAGE:
-  xcodemcp tools list [--json] [--timeout 30s] [--xcode-pid PID] [--session-id UUID] [--debug]
+  xcodecli tools list [--json] [--timeout 30s] [--xcode-pid PID] [--session-id UUID] [--debug]
 
 FLAGS:
   --json               Print the flattened tools array as pretty JSON
@@ -643,8 +643,8 @@ func toolUsage() string {
 Agents should usually inspect before calling unless they already cached the schema.
 
 USAGE:
-  xcodemcp tool inspect <name> [--json] [--xcode-pid PID] [--session-id UUID] [--debug]
-  xcodemcp tool call <name> (--json '{...}' | --json @payload.json | --json-stdin) [--timeout 30s] [--xcode-pid PID] [--session-id UUID] [--debug]
+  xcodecli tool inspect <name> [--json] [--xcode-pid PID] [--session-id UUID] [--debug]
+  xcodecli tool call <name> (--json '{...}' | --json @payload.json | --json-stdin) [--timeout 30s] [--xcode-pid PID] [--session-id UUID] [--debug]
 
 SUBCOMMANDS:
   inspect   Show tool description and input schema
@@ -657,7 +657,7 @@ func toolInspectUsage() string {
 Use --json for machine-readable metadata or plain text for quick inspection.
 
 USAGE:
-  xcodemcp tool inspect <name> [--json] [--xcode-pid PID] [--session-id UUID] [--debug]
+  xcodecli tool inspect <name> [--json] [--xcode-pid PID] [--session-id UUID] [--debug]
 
 FLAGS:
   --json               Print the raw tool object as pretty JSON
@@ -673,7 +673,7 @@ func toolCallUsage() string {
 For large payloads prefer --json @file or --json-stdin instead of a long inline string.
 
 USAGE:
-  xcodemcp tool call <name> (--json '{...}' | --json @payload.json | --json-stdin) [--timeout 30s] [--xcode-pid PID] [--session-id UUID] [--debug]
+  xcodecli tool call <name> (--json '{...}' | --json @payload.json | --json-stdin) [--timeout 30s] [--xcode-pid PID] [--session-id UUID] [--debug]
 
 FLAGS:
   --json PAYLOAD       JSON object passed as tools/call arguments, or @path to load a JSON file
@@ -694,11 +694,11 @@ func agentUsage() string {
 Use guide to learn the right workflow for a request, demo for a safe read-only onboarding flow, status for diagnostics, stop to end the running process, and uninstall to remove local LaunchAgent state.
 
 USAGE:
-  xcodemcp agent guide [<intent>] [--json] [--timeout 30s] [--xcode-pid PID] [--session-id UUID] [--debug]
-  xcodemcp agent demo [--json] [--timeout 30s] [--xcode-pid PID] [--session-id UUID] [--debug]
-  xcodemcp agent status [--json]
-  xcodemcp agent stop
-  xcodemcp agent uninstall
+  xcodecli agent guide [<intent>] [--json] [--timeout 30s] [--xcode-pid PID] [--session-id UUID] [--debug]
+  xcodecli agent demo [--json] [--timeout 30s] [--xcode-pid PID] [--session-id UUID] [--debug]
+  xcodecli agent status [--json]
+  xcodecli agent stop
+  xcodecli agent uninstall
 
 SUBCOMMANDS:
   guide        Explain the recommended tool workflow for a request
@@ -710,11 +710,11 @@ SUBCOMMANDS:
 }
 
 func agentGuideUsage() string {
-	return `agent guide explains the recommended xcodemcp workflow for a request without executing mutating tools.
+	return `agent guide explains the recommended xcodecli workflow for a request without executing mutating tools.
 It gathers lightweight live context, matches your intent to a workflow family, and prints exact next commands.
 
 USAGE:
-  xcodemcp agent guide [<intent>] [--json] [--timeout 30s] [--xcode-pid PID] [--session-id UUID] [--debug]
+  xcodecli agent guide [<intent>] [--json] [--timeout 30s] [--xcode-pid PID] [--session-id UUID] [--debug]
 
 FLAGS:
   --json               Print the full guide report as pretty JSON
@@ -734,7 +734,7 @@ func agentDemoUsage() string {
 It reuses doctor output, discovers the live MCP tool catalog, and safely calls XcodeListWindows.
 
 USAGE:
-  xcodemcp agent demo [--json] [--timeout 30s] [--xcode-pid PID] [--session-id UUID] [--debug]
+  xcodecli agent demo [--json] [--timeout 30s] [--xcode-pid PID] [--session-id UUID] [--debug]
 
 FLAGS:
   --json               Print the full demo report as pretty JSON
@@ -754,7 +754,7 @@ func agentStatusUsage() string {
 Prefer --json when another agent or script needs to consume the result.
 
 USAGE:
-  xcodemcp agent status [--json]
+  xcodecli agent status [--json]
 `
 }
 
@@ -762,7 +762,7 @@ func agentStopUsage() string {
 	return `agent stop asks the running LaunchAgent process to exit if it is currently alive.
 
 USAGE:
-  xcodemcp agent stop
+  xcodecli agent stop
 `
 }
 
@@ -771,7 +771,7 @@ func agentUninstallUsage() string {
 Use this if the LaunchAgent is stale or you want to reset local state.
 
 USAGE:
-  xcodemcp agent uninstall
+  xcodecli agent uninstall
 `
 }
 
@@ -780,7 +780,7 @@ func agentRunUsage() string {
 Most users and agents should not call it directly.
 
 USAGE:
-  xcodemcp agent run --launch-agent [--idle-timeout 10m] [--debug]
+  xcodecli agent run --launch-agent [--idle-timeout 10m] [--debug]
 
 FLAGS:
   --launch-agent       Required internal flag used by the LaunchAgent plist

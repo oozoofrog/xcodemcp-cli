@@ -6,9 +6,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/oozoofrog/xcodemcp-cli/internal/agent"
-	"github.com/oozoofrog/xcodemcp-cli/internal/doctor"
-	"github.com/oozoofrog/xcodemcp-cli/internal/mcp"
+	"github.com/oozoofrog/xcodecli/internal/agent"
+	"github.com/oozoofrog/xcodecli/internal/doctor"
+	"github.com/oozoofrog/xcodecli/internal/mcp"
 )
 
 func TestParseCLIAgentGuide(t *testing.T) {
@@ -40,7 +40,7 @@ func TestRootAndAgentUsageIncludeGuide(t *testing.T) {
 		usage string
 		want  []string
 	}{
-		{"root", rootUsage(), []string{"xcodemcp agent guide", "xcodemcp agent demo"}},
+		{"root", rootUsage(), []string{"xcodecli agent guide", "xcodecli agent demo"}},
 		{"agent", agentUsage(), []string{"guide        Explain the recommended tool workflow for a request", "demo         Run a safe read-only onboarding demo"}},
 	} {
 		for _, want := range tc.want {

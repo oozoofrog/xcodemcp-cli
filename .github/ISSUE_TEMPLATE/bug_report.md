@@ -23,5 +23,5 @@ assignees: ''
 ## Environment
 - macOS version:
 - Xcode version:
-- `xcodemcp` commit/version:
+- `xcodecli` commit/version:
 - Additional context:

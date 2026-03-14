@@ -15,7 +15,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/oozoofrog/xcodemcp-cli/internal/mcp"
+	"github.com/oozoofrog/xcodecli/internal/bridge"
+	"github.com/oozoofrog/xcodecli/internal/mcp"
 )
 
 func TestListToolsAutoInstallsLaunchAgentAndReusesBackendSession(t *testing.T) {
@@ -92,7 +93,7 @@ func TestListToolsAutostartHonorsCallerTimeout(t *testing.T) {
 		IdleTimeout:    5 * time.Second,
 		ErrOut:         io.Discard,
 		Launchd:        blockingLaunchd{},
-		ExecutablePath: func() (string, error) { return "/tmp/xcodemcp-test", nil },
+		ExecutablePath: func() (string, error) { return "/tmp/xcodecli-test", nil },
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 150*time.Millisecond)
@@ -151,6 +152,94 @@ func TestUninstallRemovesLaunchAgentArtifacts(t *testing.T) {
 	}
 }
 
+func TestStatusInfoIncludesLegacyArtifacts(t *testing.T) {
+	homeDir := t.TempDir()
+	t.Setenv("HOME", homeDir)
+
+	legacyPaths, err := DefaultLegacyPaths()
+	if err != nil {
+		t.Fatalf("DefaultLegacyPaths returned error: %v", err)
+	}
+	legacySessionPath, err := bridge.DefaultLegacySessionFilePath()
+	if err != nil {
+		t.Fatalf("DefaultLegacySessionFilePath returned error: %v", err)
+	}
+	for _, path := range []string{legacyPaths.PlistPath, legacyPaths.SocketPath, legacySessionPath} {
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatalf("MkdirAll failed: %v", err)
+		}
+		if err := os.WriteFile(path, []byte("legacy"), 0o600); err != nil {
+			t.Fatalf("WriteFile failed: %v", err)
+		}
+	}
+	if err := os.MkdirAll(legacyPaths.SupportDir, 0o700); err != nil {
+		t.Fatalf("MkdirAll support dir failed: %v", err)
+	}
+
+	_, paths := newShortPaths(t)
+	cfg := Config{
+		Paths:          paths,
+		Label:          LaunchAgentLabel,
+		IdleTimeout:    5 * time.Second,
+		ErrOut:         io.Discard,
+		Launchd:        blockingLaunchd{},
+		ExecutablePath: func() (string, error) { return "/tmp/xcodecli-test", nil },
+	}
+	status, err := StatusInfo(context.Background(), cfg)
+	if err != nil {
+		t.Fatalf("StatusInfo returned error: %v", err)
+	}
+	if !status.Legacy.PlistInstalled || !status.Legacy.SupportDirExists || !status.Legacy.SessionFileExists || !status.Legacy.SocketExists {
+		t.Fatalf("legacy status not detected: %+v", status.Legacy)
+	}
+}
+
+func TestUninstallRemovesLegacyArtifacts(t *testing.T) {
+	homeDir := t.TempDir()
+	t.Setenv("HOME", homeDir)
+
+	legacyPaths, err := DefaultLegacyPaths()
+	if err != nil {
+		t.Fatalf("DefaultLegacyPaths returned error: %v", err)
+	}
+	legacySessionPath, err := bridge.DefaultLegacySessionFilePath()
+	if err != nil {
+		t.Fatalf("DefaultLegacySessionFilePath returned error: %v", err)
+	}
+	for _, path := range []string{legacyPaths.PlistPath, legacyPaths.SocketPath, legacyPaths.PIDPath, legacyPaths.LogPath, legacySessionPath} {
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatalf("MkdirAll failed: %v", err)
+		}
+		if err := os.WriteFile(path, []byte("legacy"), 0o600); err != nil {
+			t.Fatalf("WriteFile failed: %v", err)
+		}
+	}
+	if err := os.MkdirAll(legacyPaths.SupportDir, 0o700); err != nil {
+		t.Fatalf("MkdirAll support dir failed: %v", err)
+	}
+
+	tempDir, paths := newShortPaths(t)
+	spawnFile := filepath.Join(tempDir, "spawn.log")
+	serverCfg := testServerConfig(t, paths, spawnFile, 5*time.Second)
+	harness := newServerHarness(t, serverCfg)
+	launchd := &fakeLaunchd{harness: harness}
+	clientCfg := testClientConfig(paths, spawnFile, 5*time.Second, launchd)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if _, err := ListTools(ctx, clientCfg, Request{Timeout: 2 * time.Second}); err != nil {
+		t.Fatalf("ListTools returned error: %v", err)
+	}
+	if err := Uninstall(ctx, clientCfg); err != nil {
+		t.Fatalf("Uninstall returned error: %v", err)
+	}
+	for _, path := range []string{legacyPaths.PlistPath, legacyPaths.SocketPath, legacyPaths.PIDPath, legacyPaths.LogPath, legacySessionPath, legacyPaths.SupportDir} {
+		if _, err := os.Stat(path); !os.IsNotExist(err) {
+			t.Fatalf("expected legacy artifact %s to be removed, stat err=%v", path, err)
+		}
+	}
+}
+
 func testClientConfig(paths Paths, spawnFile string, idleTimeout time.Duration, launchd Launchd) Config {
 	return Config{
 		Paths:       paths,
@@ -163,7 +252,7 @@ func testClientConfig(paths Paths, spawnFile string, idleTimeout time.Duration, 
 		),
 		ErrOut:         io.Discard,
 		Launchd:        launchd,
-		ExecutablePath: func() (string, error) { return "/tmp/xcodemcp-test", nil },
+		ExecutablePath: func() (string, error) { return "/tmp/xcodecli-test", nil },
 	}
 }
 
@@ -179,7 +268,7 @@ func testServerConfig(t *testing.T, paths Paths, spawnFile string, idleTimeout t
 			"AGENT_HELPER_SPAWN_FILE="+spawnFile,
 		),
 		ErrOut:         io.Discard,
-		ExecutablePath: func() (string, error) { return "/tmp/xcodemcp-test", nil },
+		ExecutablePath: func() (string, error) { return "/tmp/xcodecli-test", nil },
 	})
 	if err != nil {
 		t.Fatalf("normalizeConfig returned error: %v", err)

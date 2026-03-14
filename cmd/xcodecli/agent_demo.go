@@ -7,9 +7,9 @@ import (
 	"io"
 	"strings"
 
-	"github.com/oozoofrog/xcodemcp-cli/internal/agent"
-	"github.com/oozoofrog/xcodemcp-cli/internal/bridge"
-	"github.com/oozoofrog/xcodemcp-cli/internal/doctor"
+	"github.com/oozoofrog/xcodecli/internal/agent"
+	"github.com/oozoofrog/xcodecli/internal/bridge"
+	"github.com/oozoofrog/xcodecli/internal/doctor"
 )
 
 const demoWindowsToolName = "XcodeListWindows"
@@ -61,7 +61,7 @@ type agentDemoReport struct {
 func runAgentDemo(ctx context.Context, cfg cliConfig, env []string, stdout, stderr io.Writer, agentCfg agent.Config) int {
 	resolved, err := resolveEffectiveOptions(env, cfg)
 	if err != nil {
-		fmt.Fprintf(stderr, "xcodemcp: %v\n", err)
+		fmt.Fprintf(stderr, "xcodecli: %v\n", err)
 		return 1
 	}
 	if cfg.Debug {
@@ -69,7 +69,7 @@ func runAgentDemo(ctx context.Context, cfg cliConfig, env []string, stdout, stde
 	}
 	effective := resolved.EnvOptions
 	if err := bridge.ValidateEnvOptions(effective); err != nil {
-		fmt.Fprintf(stderr, "xcodemcp: invalid MCP options: %v\n", err)
+		fmt.Fprintf(stderr, "xcodecli: invalid MCP options: %v\n", err)
 		return 1
 	}
 
@@ -147,7 +147,7 @@ func runAgentDemo(ctx context.Context, cfg cliConfig, env []string, stdout, stde
 
 	if cfg.JSONOutput {
 		if err := writeJSON(stdout, report); err != nil {
-			fmt.Fprintf(stderr, "xcodemcp: %v\n", err)
+			fmt.Fprintf(stderr, "xcodecli: %v\n", err)
 			return 1
 		}
 	} else {
@@ -226,15 +226,15 @@ func requiredArgsFromTool(tool map[string]any) []string {
 
 func agentDemoNextCommands() []string {
 	return []string{
-		`xcodemcp tool inspect XcodeRead --json`,
-		`xcodemcp tool call XcodeLS --json '{"tabIdentifier":"<tabIdentifier from above>","path":""}'`,
-		`xcodemcp tool call XcodeRead --json '{"tabIdentifier":"<tabIdentifier from above>","filePath":"<path from XcodeLS>"}'`,
+		`xcodecli tool inspect XcodeRead --json`,
+		`xcodecli tool call XcodeLS --json '{"tabIdentifier":"<tabIdentifier from above>","path":""}'`,
+		`xcodecli tool call XcodeRead --json '{"tabIdentifier":"<tabIdentifier from above>","filePath":"<path from XcodeLS>"}'`,
 	}
 }
 
 func formatAgentDemo(report agentDemoReport) string {
 	var b strings.Builder
-	b.WriteString("xcodemcp agent demo\n\n")
+	b.WriteString("xcodecli agent demo\n\n")
 
 	b.WriteString("Environment\n")
 	b.WriteString("-----------\n")

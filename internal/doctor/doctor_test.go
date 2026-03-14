@@ -7,8 +7,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/oozoofrog/xcodemcp-cli/internal/agent"
-	"github.com/oozoofrog/xcodemcp-cli/internal/bridge"
+	"github.com/oozoofrog/xcodecli/internal/agent"
+	"github.com/oozoofrog/xcodecli/internal/bridge"
 )
 
 func TestReportString(t *testing.T) {
@@ -112,11 +112,11 @@ func TestInspectorIncludesAgentStatusInfo(t *testing.T) {
 	report := inspector.Run(context.Background(), Options{
 		AgentStatus: &agent.Status{
 			PlistInstalled:    true,
-			PlistPath:         "/tmp/io.oozoofrog.xcodemcp.plist",
+			PlistPath:         "/tmp/io.oozoofrog.xcodecli.plist",
 			SocketReachable:   true,
 			SocketPath:        "/tmp/daemon.sock",
-			RegisteredBinary:  "/tmp/xcodemcp",
-			CurrentBinary:     "/tmp/xcodemcp",
+			RegisteredBinary:  "/tmp/xcodecli",
+			CurrentBinary:     "/tmp/xcodecli",
 			BinaryPathMatches: true,
 		},
 	})

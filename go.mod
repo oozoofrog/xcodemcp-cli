@@ -1,3 +1,3 @@
-module github.com/oozoofrog/xcodemcp-cli
+module github.com/oozoofrog/xcodecli
 
 go 1.26

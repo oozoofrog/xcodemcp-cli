@@ -10,8 +10,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/oozoofrog/xcodemcp-cli/internal/bridge"
-	"github.com/oozoofrog/xcodemcp-cli/internal/mcp"
+	"github.com/oozoofrog/xcodecli/internal/bridge"
+	"github.com/oozoofrog/xcodecli/internal/mcp"
 )
 
 type Config struct {
@@ -48,6 +48,19 @@ type Status struct {
 	PID               int           `json:"pid"`
 	IdleTimeout       time.Duration `json:"idleTimeout"`
 	BackendSessions   int           `json:"backendSessions"`
+	Legacy            LegacyStatus  `json:"legacy"`
+}
+
+type LegacyStatus struct {
+	Label             string `json:"label"`
+	PlistPath         string `json:"plistPath"`
+	PlistInstalled    bool   `json:"plistInstalled"`
+	SupportDir        string `json:"supportDir"`
+	SupportDirExists  bool   `json:"supportDirExists"`
+	SessionPath       string `json:"sessionPath"`
+	SessionFileExists bool   `json:"sessionFileExists"`
+	SocketPath        string `json:"socketPath"`
+	SocketExists      bool   `json:"socketExists"`
 }
 
 type runtimeStatus struct {

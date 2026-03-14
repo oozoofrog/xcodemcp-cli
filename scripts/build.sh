@@ -2,8 +2,8 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-PACKAGE="${PACKAGE:-./cmd/xcodemcp}"
-OUTPUT="${1:-${OUTPUT:-${ROOT_DIR}/xcodemcp}}"
+PACKAGE="${PACKAGE:-./cmd/xcodecli}"
+OUTPUT="${1:-${OUTPUT:-${ROOT_DIR}/xcodecli}}"
 
 mkdir -p "$(dirname "$OUTPUT")"
 

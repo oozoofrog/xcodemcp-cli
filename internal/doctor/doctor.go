@@ -12,8 +12,8 @@ import (
 	"time"
 	"unicode"
 
-	"github.com/oozoofrog/xcodemcp-cli/internal/agent"
-	"github.com/oozoofrog/xcodemcp-cli/internal/bridge"
+	"github.com/oozoofrog/xcodecli/internal/agent"
+	"github.com/oozoofrog/xcodecli/internal/bridge"
 )
 
 type Status string
@@ -127,7 +127,7 @@ func (r Report) JSON() JSONReport {
 func (r Report) String() string {
 	summary := r.Summary()
 	var b strings.Builder
-	b.WriteString("xcodemcp doctor\n\n")
+	b.WriteString("xcodecli doctor\n\n")
 	for _, check := range r.Checks {
 		fmt.Fprintf(&b, "%s %s: %s\n", statusIcon(check.Status), check.Name, check.Detail)
 	}
@@ -238,6 +238,9 @@ func (i Inspector) Run(ctx context.Context, opts Options) Report {
 		if opts.AgentStatus.RegisteredBinary != "" || opts.AgentStatus.CurrentBinary != "" {
 			checks = append(checks, Check{Name: "LaunchAgent binary registration", Status: StatusInfo, Detail: fmt.Sprintf("registered=%s | current=%s | match=%t", opts.AgentStatus.RegisteredBinary, opts.AgentStatus.CurrentBinary, opts.AgentStatus.BinaryPathMatches)})
 		}
+		checks = append(checks, Check{Name: "Legacy LaunchAgent plist", Status: StatusInfo, Detail: fmt.Sprintf("installed=%t path=%s", opts.AgentStatus.Legacy.PlistInstalled, opts.AgentStatus.Legacy.PlistPath)})
+		checks = append(checks, Check{Name: "Legacy support directory", Status: StatusInfo, Detail: fmt.Sprintf("exists=%t path=%s", opts.AgentStatus.Legacy.SupportDirExists, opts.AgentStatus.Legacy.SupportDir)})
+		checks = append(checks, Check{Name: "Legacy session file", Status: StatusInfo, Detail: fmt.Sprintf("exists=%t path=%s", opts.AgentStatus.Legacy.SessionFileExists, opts.AgentStatus.Legacy.SessionPath)})
 	}
 
 	return Report{Checks: checks}
@@ -252,6 +255,10 @@ func formatSessionDetail(opts Options) string {
 	case bridge.SessionSourceGenerated:
 		if opts.SessionPath != "" {
 			return fmt.Sprintf("%s (generated and saved to %s)", opts.SessionID, opts.SessionPath)
+		}
+	case bridge.SessionSourceMigrated:
+		if opts.SessionPath != "" {
+			return fmt.Sprintf("%s (migrated from legacy xcodemcp storage into %s)", opts.SessionID, opts.SessionPath)
 		}
 	case bridge.SessionSourceEnv:
 		return fmt.Sprintf("%s (from environment)", opts.SessionID)

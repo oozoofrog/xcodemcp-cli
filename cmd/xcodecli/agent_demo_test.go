@@ -7,9 +7,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/oozoofrog/xcodemcp-cli/internal/agent"
-	"github.com/oozoofrog/xcodemcp-cli/internal/doctor"
-	"github.com/oozoofrog/xcodemcp-cli/internal/mcp"
+	"github.com/oozoofrog/xcodecli/internal/agent"
+	"github.com/oozoofrog/xcodecli/internal/doctor"
+	"github.com/oozoofrog/xcodecli/internal/mcp"
 )
 
 func TestParseCLIAgentDemo(t *testing.T) {
@@ -37,7 +37,7 @@ func TestParseCLIHelpAgentDemo(t *testing.T) {
 
 func TestRootUsageIncludesAgentDemo(t *testing.T) {
 	usage := rootUsage()
-	for _, want := range []string{"xcodemcp agent demo", "xcodemcp tools list", "xcodemcp tool call XcodeListWindows --json '{}'"} {
+	for _, want := range []string{"xcodecli agent demo", "xcodecli tools list", "xcodecli tool call XcodeListWindows --json '{}'"} {
 		if !strings.Contains(usage, want) {
 			t.Fatalf("root usage missing %q: %s", want, usage)
 		}
@@ -46,7 +46,7 @@ func TestRootUsageIncludesAgentDemo(t *testing.T) {
 
 func TestAgentUsageIncludesDemo(t *testing.T) {
 	usage := agentUsage()
-	for _, want := range []string{"xcodemcp agent demo", "demo         Run a safe read-only onboarding demo"} {
+	for _, want := range []string{"xcodecli agent demo", "demo         Run a safe read-only onboarding demo"} {
 		if !strings.Contains(usage, want) {
 			t.Fatalf("agent usage missing %q: %s", want, usage)
 		}
@@ -97,7 +97,7 @@ func TestRunAgentDemoText(t *testing.T) {
 			"XcodeListWindows",
 			"XcodeLS",
 			"XcodeRead",
-			"xcodemcp tool inspect XcodeRead --json",
+			"xcodecli tool inspect XcodeRead --json",
 			"* tabIdentifier: windowtab1, workspacePath: /tmp/Demo.xcodeproj",
 			"launchagent after tools discovery: running=true socketReachable=true backendSessions=2",
 		} {

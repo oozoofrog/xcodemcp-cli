@@ -12,8 +12,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/oozoofrog/xcodemcp-cli/internal/bridge"
-	"github.com/oozoofrog/xcodemcp-cli/internal/mcp"
+	"github.com/oozoofrog/xcodecli/internal/bridge"
+	"github.com/oozoofrog/xcodecli/internal/mcp"
 )
 
 type sessionKey struct {
