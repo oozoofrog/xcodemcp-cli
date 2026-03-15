@@ -55,6 +55,16 @@ type commandInvocation struct {
 
 var defaultExecutablePathFunc = resolveCurrentExecutablePath
 var defaultMCPCommandRunner mcpCommandRunner = runExternalCommand
+var defaultArgv0Func = func() string {
+	if len(os.Args) == 0 {
+		return ""
+	}
+	return os.Args[0]
+}
+var defaultGetwdFunc = os.Getwd
+var defaultLookPathFunc = exec.LookPath
+var defaultOSExecutableFunc = os.Executable
+var defaultTempDirFunc = os.TempDir
 
 func runMCPConfig(ctx context.Context, cfg cliConfig, stdout, stderr io.Writer) int {
 	explicit := bridge.EnvOptions{XcodePID: cfg.XcodePID, SessionID: cfg.SessionID}
@@ -378,15 +388,97 @@ func mcpShellQuote(value string) string {
 }
 
 func resolveCurrentExecutablePath() (string, error) {
-	path, err := os.Executable()
+	if path, ok, err := resolveConfiguredExecutablePath(); err != nil {
+		return "", err
+	} else if ok {
+		return path, nil
+	}
+
+	path, err := defaultOSExecutableFunc()
 	if err != nil {
 		return "", fmt.Errorf("resolve current executable: %w", err)
 	}
-	resolved, err := filepath.EvalSymlinks(path)
-	if err == nil {
-		return resolved, nil
+	return validateConfiguredExecutablePath(filepath.Clean(path))
+}
+
+func resolveConfiguredExecutablePath() (string, bool, error) {
+	raw := strings.TrimSpace(defaultArgv0Func())
+	if raw == "" {
+		return "", false, nil
 	}
-	return filepath.Clean(path), nil
+	if filepath.IsAbs(raw) {
+		path := filepath.Clean(raw)
+		validated, err := validateConfiguredExecutablePath(path)
+		return validated, true, err
+	}
+	if strings.Contains(raw, string(os.PathSeparator)) {
+		cwd, err := defaultGetwdFunc()
+		if err != nil {
+			return "", false, fmt.Errorf("resolve current working directory: %w", err)
+		}
+		path := filepath.Clean(filepath.Join(cwd, raw))
+		validated, err := validateConfiguredExecutablePath(path)
+		return validated, true, err
+	}
+	lookedUp, err := defaultLookPathFunc(raw)
+	if err != nil {
+		return "", false, nil
+	}
+	path := filepath.Clean(lookedUp)
+	validated, err := validateConfiguredExecutablePath(path)
+	return validated, true, err
+}
+
+func validateConfiguredExecutablePath(path string) (string, error) {
+	if isTemporaryGoBuildExecutable(path) {
+		return "", fmt.Errorf("current executable path appears to be a temporary Go build output (%s); rerun `mcp config` using an installed or directly built xcodecli binary", path)
+	}
+	return path, nil
+}
+
+func isTemporaryGoBuildExecutable(path string) bool {
+	if strings.TrimSpace(path) == "" {
+		return false
+	}
+	normalizedPath := normalizePrivatePrefix(filepath.Clean(path))
+	normalizedTempDir := normalizePrivatePrefix(filepath.Clean(defaultTempDirFunc()))
+	if !pathWithinBase(normalizedPath, normalizedTempDir) {
+		return false
+	}
+	if filepath.Base(normalizedPath) != "xcodecli" {
+		return false
+	}
+	if filepath.Base(filepath.Dir(normalizedPath)) != "exe" {
+		return false
+	}
+	for _, part := range strings.Split(filepath.ToSlash(normalizedPath), "/") {
+		if strings.HasPrefix(part, "go-build") {
+			return true
+		}
+	}
+	return false
+}
+
+func normalizePrivatePrefix(path string) string {
+	const privatePrefix = "/private"
+	if strings.HasPrefix(path, privatePrefix+"/") {
+		return strings.TrimPrefix(path, privatePrefix)
+	}
+	return path
+}
+
+func pathWithinBase(path, base string) bool {
+	if path == base {
+		return true
+	}
+	if base == "" {
+		return false
+	}
+	rel, err := filepath.Rel(base, path)
+	if err != nil {
+		return false
+	}
+	return rel == "." || (rel != ".." && !strings.HasPrefix(rel, ".."+string(os.PathSeparator)))
 }
 
 func runExternalCommand(ctx context.Context, name string, args []string) (externalCommandResult, error) {

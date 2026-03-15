@@ -777,17 +777,40 @@ NOTES:
 }
 
 func mcpClientUsage(client string) string {
-	return fmt.Sprintf(`mcp %s is a shorthand alias for "xcodecli mcp config --client %s".
+	switch client {
+	case "codex":
+		return `mcp codex is a shorthand alias for "xcodecli mcp config --client codex".
 Use it to print or write a ready-to-run MCP registration command for xcodecli bridge.
 
 USAGE:
-  xcodecli mcp %s [--name xcodecli] [--scope SCOPE] [--write] [--json] [--xcode-pid PID] [--session-id UUID]
+  xcodecli mcp codex [--name xcodecli] [--write] [--json] [--xcode-pid PID] [--session-id UUID]
 
 NOTES:
-  Codex ignores --scope.
+  Scope selection is not supported for Codex.
+`
+	case "claude":
+		return `mcp claude is a shorthand alias for "xcodecli mcp config --client claude".
+Use it to print or write a ready-to-run MCP registration command for xcodecli bridge.
+
+USAGE:
+  xcodecli mcp claude [--name xcodecli] [--scope SCOPE] [--write] [--json] [--xcode-pid PID] [--session-id UUID]
+
+NOTES:
   Claude defaults to --scope local.
+`
+	case "gemini":
+		return `mcp gemini is a shorthand alias for "xcodecli mcp config --client gemini".
+Use it to print or write a ready-to-run MCP registration command for xcodecli bridge.
+
+USAGE:
+  xcodecli mcp gemini [--name xcodecli] [--scope SCOPE] [--write] [--json] [--xcode-pid PID] [--session-id UUID]
+
+NOTES:
   Gemini defaults to --scope user.
-`, client, client, client)
+`
+	default:
+		return fmt.Sprintf(`mcp %s is a shorthand alias for "xcodecli mcp config --client %s".`, client, client)
+	}
 }
 
 func toolsUsage() string {

@@ -103,6 +103,29 @@ func TestParseCLIHelpMCPCodex(t *testing.T) {
 			t.Fatalf("usage missing %q: %s", want, usage)
 		}
 	}
+	if strings.Contains(usage, "--scope") {
+		t.Fatalf("usage should not mention --scope: %s", usage)
+	}
+}
+
+func TestParseCLIHelpMCPClaudeIncludesScope(t *testing.T) {
+	_, usage, err := parseCLI([]string{"help", "mcp", "claude"})
+	if err != errUsageRequested {
+		t.Fatalf("err = %v, want errUsageRequested", err)
+	}
+	if !strings.Contains(usage, "--scope SCOPE") {
+		t.Fatalf("usage missing scope: %s", usage)
+	}
+}
+
+func TestParseCLIHelpMCPGeminiIncludesScope(t *testing.T) {
+	_, usage, err := parseCLI([]string{"help", "mcp", "gemini"})
+	if err != errUsageRequested {
+		t.Fatalf("err = %v, want errUsageRequested", err)
+	}
+	if !strings.Contains(usage, "--scope SCOPE") {
+		t.Fatalf("usage missing scope: %s", usage)
+	}
 }
 
 func TestRunMCPConfigTextCodex(t *testing.T) {
@@ -319,4 +342,72 @@ func TestRunMCPConfigRejectsInvalidSessionID(t *testing.T) {
 			t.Fatalf("stderr = %q, want invalid options message", stderr.String())
 		}
 	})
+}
+
+func TestResolveCurrentExecutablePathUsesLookPathForBareCommand(t *testing.T) {
+	withExecutableResolverStubs(t, func() {
+		defaultArgv0Func = func() string { return "xcodecli" }
+		defaultLookPathFunc = func(file string) (string, error) {
+			if file != "xcodecli" {
+				t.Fatalf("file = %q, want xcodecli", file)
+			}
+			return "/opt/homebrew/bin/xcodecli", nil
+		}
+		defaultOSExecutableFunc = func() (string, error) {
+			return "/private/var/folders/tmp/go-build123/b001/exe/xcodecli", nil
+		}
+		path, err := resolveCurrentExecutablePath()
+		if err != nil {
+			t.Fatalf("resolveCurrentExecutablePath returned error: %v", err)
+		}
+		if path != "/opt/homebrew/bin/xcodecli" {
+			t.Fatalf("path = %q, want stable lookup path", path)
+		}
+	})
+}
+
+func TestResolveCurrentExecutablePathKeepsAbsolutePathWithoutResolvingSymlink(t *testing.T) {
+	withExecutableResolverStubs(t, func() {
+		defaultArgv0Func = func() string { return "/opt/homebrew/bin/xcodecli" }
+		path, err := resolveCurrentExecutablePath()
+		if err != nil {
+			t.Fatalf("resolveCurrentExecutablePath returned error: %v", err)
+		}
+		if path != "/opt/homebrew/bin/xcodecli" {
+			t.Fatalf("path = %q, want unchanged absolute path", path)
+		}
+	})
+}
+
+func TestResolveCurrentExecutablePathRejectsTemporaryGoBuildOutput(t *testing.T) {
+	withExecutableResolverStubs(t, func() {
+		defaultArgv0Func = func() string { return "/private/var/folders/ab/cd/T/go-build123456/b001/exe/xcodecli" }
+		defaultTempDirFunc = func() string { return "/var/folders/ab/cd/T" }
+		_, err := resolveCurrentExecutablePath()
+		if err == nil || !strings.Contains(err.Error(), "temporary Go build output") {
+			t.Fatalf("expected temporary go build error, got %v", err)
+		}
+	})
+}
+
+func withExecutableResolverStubs(t *testing.T, fn func()) {
+	t.Helper()
+	oldArgv0 := defaultArgv0Func
+	oldGetwd := defaultGetwdFunc
+	oldLookPath := defaultLookPathFunc
+	oldOSExecutable := defaultOSExecutableFunc
+	oldTempDir := defaultTempDirFunc
+	defaultArgv0Func = func() string { return "" }
+	defaultGetwdFunc = func() (string, error) { return "/tmp", nil }
+	defaultLookPathFunc = func(file string) (string, error) { return "", errors.New("unexpected lookpath") }
+	defaultOSExecutableFunc = func() (string, error) { return "/tmp/xcodecli", nil }
+	defaultTempDirFunc = func() string { return "/tmp" }
+	defer func() {
+		defaultArgv0Func = oldArgv0
+		defaultGetwdFunc = oldGetwd
+		defaultLookPathFunc = oldLookPath
+		defaultOSExecutableFunc = oldOSExecutable
+		defaultTempDirFunc = oldTempDir
+	}()
+	fn()
 }

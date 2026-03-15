@@ -679,6 +679,11 @@ func withStubs(t *testing.T, fn func()) {
 	oldCall := defaultToolCallFunc
 	oldExecutablePath := defaultExecutablePathFunc
 	oldMCPRunner := defaultMCPCommandRunner
+	oldArgv0 := defaultArgv0Func
+	oldGetwd := defaultGetwdFunc
+	oldLookPath := defaultLookPathFunc
+	oldOSExecutable := defaultOSExecutableFunc
+	oldTempDir := defaultTempDirFunc
 	oldStatus := defaultAgentStatusFunc
 	oldStop := defaultAgentStopFunc
 	oldUninstall := defaultAgentUninstallFunc
@@ -699,6 +704,11 @@ func withStubs(t *testing.T, fn func()) {
 	defaultMCPCommandRunner = func(ctx context.Context, name string, args []string) (externalCommandResult, error) {
 		return externalCommandResult{}, errors.New("unexpected mcp config command")
 	}
+	defaultArgv0Func = func() string { return "/tmp/xcodecli-test" }
+	defaultGetwdFunc = func() (string, error) { return "/tmp", nil }
+	defaultLookPathFunc = func(file string) (string, error) { return "", errors.New("unexpected lookpath") }
+	defaultOSExecutableFunc = func() (string, error) { return "/tmp/xcodecli-test", nil }
+	defaultTempDirFunc = func() string { return "/tmp" }
 	defaultAgentStatusFunc = func(ctx context.Context, cfg agent.Config) (agent.Status, error) {
 		return agent.Status{}, nil
 	}
@@ -711,6 +721,11 @@ func withStubs(t *testing.T, fn func()) {
 		defaultToolCallFunc = oldCall
 		defaultExecutablePathFunc = oldExecutablePath
 		defaultMCPCommandRunner = oldMCPRunner
+		defaultArgv0Func = oldArgv0
+		defaultGetwdFunc = oldGetwd
+		defaultLookPathFunc = oldLookPath
+		defaultOSExecutableFunc = oldOSExecutable
+		defaultTempDirFunc = oldTempDir
 		defaultAgentStatusFunc = oldStatus
 		defaultAgentStopFunc = oldStop
 		defaultAgentUninstallFunc = oldUninstall
