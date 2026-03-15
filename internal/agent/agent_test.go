@@ -509,6 +509,117 @@ func TestDoRPCCancelWithoutDeadlineUnblocksRead(t *testing.T) {
 	}
 }
 
+func TestDoWithAutostartReturnsServerResponseErrorVerbatim(t *testing.T) {
+	_, paths := newShortPaths(t)
+	cfg := Config{
+		Paths:       paths,
+		Label:       LaunchAgentLabel,
+		IdleTimeout: time.Second,
+		ErrOut:      io.Discard,
+		ExecutablePath: func() (string, error) {
+			return "/tmp/xcodecli-test", nil
+		},
+		DialContext: func(ctx context.Context, network, address string) (net.Conn, error) {
+			client, server := net.Pipe()
+			go func() {
+				defer server.Close()
+				_, _ = bufio.NewReader(server).ReadBytes('\n')
+				_, _ = server.Write([]byte(`{"error":"backend boom"}` + "\n"))
+			}()
+			return client, nil
+		},
+	}
+
+	_, err := doWithAutostart(context.Background(), cfg, rpcRequest{Method: "tools/list", TimeoutMS: 1000})
+	if err == nil || err.Error() != "backend boom" {
+		t.Fatalf("expected server response error, got %v", err)
+	}
+}
+
+func TestServerHelpersCoverClientLifecycleAndStatus(t *testing.T) {
+	abortCalled := false
+	closeCalled := false
+	pooled := &pooledSession{
+		client: &fakeSessionClient{
+			abortFn: func() error {
+				abortCalled = true
+				return nil
+			},
+			closeFn: func() error {
+				closeCalled = true
+				return nil
+			},
+		},
+	}
+	s := &server{
+		cfg: Config{IdleTimeout: 5 * time.Second, ErrOut: io.Discard},
+		sessions: map[sessionKey]*pooledSession{
+			{SessionID: "a"}: pooled,
+			{SessionID: "b"}: {},
+		},
+	}
+
+	s.discardClient(pooled)
+	if !abortCalled || pooled.client != nil {
+		t.Fatalf("discardClient did not abort and clear client: abortCalled=%t client=%v", abortCalled, pooled.client)
+	}
+
+	pooled.client = &fakeSessionClient{
+		closeFn: func() error {
+			closeCalled = true
+			return nil
+		},
+	}
+	s.closeSession(pooled)
+	if !closeCalled || pooled.client != nil {
+		t.Fatalf("closeSession did not close and clear client: closeCalled=%t client=%v", closeCalled, pooled.client)
+	}
+
+	status := s.runtimeStatus()
+	if status.BackendSessions != 0 {
+		t.Fatalf("BackendSessions = %d, want 0", status.BackendSessions)
+	}
+}
+
+func TestRequestContextAndSetEnvValueHelpers(t *testing.T) {
+	parent, cancelParent := context.WithCancel(context.Background())
+	defer cancelParent()
+
+	ctx, cancel := requestContext(parent, rpcRequest{})
+	cancelParent()
+	select {
+	case <-ctx.Done():
+	case <-time.After(time.Second):
+		t.Fatal("requestContext should inherit parent cancellation")
+	}
+	cancel()
+
+	timeoutCtx, cancelTimeout := requestContext(context.Background(), rpcRequest{TimeoutMS: 50})
+	defer cancelTimeout()
+	if _, ok := timeoutCtx.Deadline(); !ok {
+		t.Fatal("requestContext with timeout should have deadline")
+	}
+
+	env := []string{"A=1"}
+	replaced := setEnvValue(env, "A", "2")
+	if len(replaced) != 1 || replaced[0] != "A=2" {
+		t.Fatalf("setEnvValue replace = %v, want [A=2]", replaced)
+	}
+	appended := setEnvValue(env, "B", "3")
+	if len(appended) != 2 || appended[1] != "B=3" {
+		t.Fatalf("setEnvValue append = %v, want appended B=3", appended)
+	}
+}
+
+func TestTimeoutBudgetMillisUsesRemainingDeadline(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 80*time.Millisecond)
+	defer cancel()
+	budget := timeoutBudgetMillis(ctx, int64((500 * time.Millisecond).Milliseconds()))
+	if budget <= 0 || budget >= 500 {
+		t.Fatalf("budget = %dms, want >0 and <500", budget)
+	}
+}
+
 func TestHandleConnCancelsInFlightRequestOnDisconnect(t *testing.T) {
 	oldFactory := newSessionClient
 	t.Cleanup(func() { newSessionClient = oldFactory })

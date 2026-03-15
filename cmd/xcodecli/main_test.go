@@ -400,6 +400,102 @@ func TestRunServeUsesPersistentSessionID(t *testing.T) {
 	})
 }
 
+func TestRunServePassesAgentRequestContextToHandlers(t *testing.T) {
+	withStubs(t, func() {
+		oldSessionPathFunc := defaultSessionPathFunc
+		sessionPath := filepath.Join(t.TempDir(), "session-id")
+		defaultSessionPathFunc = func() (string, error) { return sessionPath, nil }
+		defer func() { defaultSessionPathFunc = oldSessionPathFunc }()
+
+		defaultMCPServeFunc = func(ctx context.Context, cfg mcp.ServerConfig, handler mcp.ServerHandler) error {
+			if cfg.ServerName != "xcodecli" {
+				t.Fatalf("ServerName = %q, want xcodecli", cfg.ServerName)
+			}
+			if cfg.ServerVersion == "" {
+				t.Fatal("ServerVersion should not be empty")
+			}
+			if !cfg.Debug {
+				t.Fatal("Debug = false, want true")
+			}
+
+			tools, err := handler.ListTools(ctx)
+			if err != nil {
+				t.Fatalf("ListTools handler returned error: %v", err)
+			}
+			if len(tools) != 1 || tools[0]["name"] != "list_windows" {
+				t.Fatalf("unexpected tools: %+v", tools)
+			}
+
+			callResult, err := handler.CallTool(ctx, "BuildProject", map[string]any{"tabIdentifier": "demo"})
+			if err != nil {
+				t.Fatalf("CallTool handler returned error: %v", err)
+			}
+			if callResult.Result["echoName"] != "BuildProject" {
+				t.Fatalf("unexpected call result: %+v", callResult.Result)
+			}
+			return nil
+		}
+
+		defaultToolsListFunc = func(ctx context.Context, cfg agent.Config, req agent.Request) ([]map[string]any, error) {
+			if req.Timeout != 0 {
+				t.Fatalf("req.Timeout = %s, want 0", req.Timeout)
+			}
+			if req.DeveloperDir != "/Applications/Xcode-beta.app/Contents/Developer" {
+				t.Fatalf("DeveloperDir = %q, want inherited DEVELOPER_DIR", req.DeveloperDir)
+			}
+			if !req.Debug {
+				t.Fatal("Debug = false, want true")
+			}
+			return []map[string]any{{"name": "list_windows"}}, nil
+		}
+		defaultToolCallFunc = func(ctx context.Context, cfg agent.Config, req agent.Request, toolName string, arguments map[string]any) (mcp.CallResult, error) {
+			if req.Timeout != 0 {
+				t.Fatalf("req.Timeout = %s, want 0", req.Timeout)
+			}
+			if req.DeveloperDir != "/Applications/Xcode-beta.app/Contents/Developer" {
+				t.Fatalf("DeveloperDir = %q, want inherited DEVELOPER_DIR", req.DeveloperDir)
+			}
+			if toolName != "BuildProject" || arguments["tabIdentifier"] != "demo" {
+				t.Fatalf("unexpected call args: tool=%q arguments=%+v", toolName, arguments)
+			}
+			return mcp.CallResult{Result: map[string]any{"echoName": toolName}}, nil
+		}
+
+		var stdout strings.Builder
+		var stderr strings.Builder
+		env := []string{
+			"DEVELOPER_DIR=/Applications/Xcode-beta.app/Contents/Developer",
+		}
+		code := run(context.Background(), []string{"serve", "--debug"}, strings.NewReader(""), &stdout, &stderr, env)
+		if code != 0 {
+			t.Fatalf("exit code = %d, want 0 (stderr=%q)", code, stderr.String())
+		}
+	})
+}
+
+func TestRunServeReportsServerError(t *testing.T) {
+	withStubs(t, func() {
+		oldSessionPathFunc := defaultSessionPathFunc
+		sessionPath := filepath.Join(t.TempDir(), "session-id")
+		defaultSessionPathFunc = func() (string, error) { return sessionPath, nil }
+		defer func() { defaultSessionPathFunc = oldSessionPathFunc }()
+
+		defaultMCPServeFunc = func(ctx context.Context, cfg mcp.ServerConfig, handler mcp.ServerHandler) error {
+			return errors.New("serve failed")
+		}
+
+		var stdout strings.Builder
+		var stderr strings.Builder
+		code := run(context.Background(), []string{"serve"}, strings.NewReader(""), &stdout, &stderr, nil)
+		if code != 1 {
+			t.Fatalf("exit code = %d, want 1", code)
+		}
+		if !strings.Contains(stderr.String(), "serve failed") {
+			t.Fatalf("stderr = %q, want serve error", stderr.String())
+		}
+	})
+}
+
 func TestRunToolsListJSON(t *testing.T) {
 	withStubs(t, func() {
 		defaultToolsListFunc = func(ctx context.Context, cfg agent.Config, req agent.Request) ([]map[string]any, error) {
