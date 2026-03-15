@@ -197,6 +197,17 @@ func doWithAutostart(ctx context.Context, cfg Config, req rpcRequest) (rpcRespon
 	if err == nil {
 		return resp, nil
 	}
+	var serverErr serverResponseError
+	if errors.As(err, &serverErr) {
+		return rpcResponse{}, err
+	}
+	if ctx.Err() != nil {
+		var unavailable unavailableError
+		if errors.As(err, &unavailable) && unavailable.stage == "connect" {
+			return rpcResponse{}, requestTimeoutError(effectiveReq.TimeoutMS, "connecting to the LaunchAgent after startup", ctx.Err())
+		}
+		return rpcResponse{}, requestTimeoutError(effectiveReq.TimeoutMS, requestTimeoutAction(req.Method, req.ToolName), ctx.Err())
+	}
 	if !isUnavailable(err) {
 		return rpcResponse{}, err
 	}
@@ -271,6 +282,15 @@ func doRPC(ctx context.Context, cfg Config, req rpcRequest) (rpcResponse, error)
 		return rpcResponse{}, unavailableError{stage: "connect", err: fmt.Errorf("connect to agent socket %s: %w", cfg.Paths.SocketPath, err)}
 	}
 	defer conn.Close()
+	cancelWatchDone := make(chan struct{})
+	go func() {
+		select {
+		case <-ctx.Done():
+			_ = conn.SetDeadline(time.Now())
+		case <-cancelWatchDone:
+		}
+	}()
+	defer close(cancelWatchDone)
 	if deadline, ok := ctx.Deadline(); ok {
 		_ = conn.SetDeadline(deadline)
 	}
@@ -280,10 +300,16 @@ func doRPC(ctx context.Context, cfg Config, req rpcRequest) (rpcResponse, error)
 		return rpcResponse{}, fmt.Errorf("marshal agent request: %w", err)
 	}
 	if _, err := conn.Write(append(payload, '\n')); err != nil {
+		if ctxErr := contextErrorForConnIO(ctx, err); ctxErr != nil {
+			return rpcResponse{}, ctxErr
+		}
 		return rpcResponse{}, fmt.Errorf("write agent request: %w", err)
 	}
 	line, err := bufio.NewReader(conn).ReadBytes('\n')
 	if err != nil {
+		if ctxErr := contextErrorForConnIO(ctx, err); ctxErr != nil {
+			return rpcResponse{}, ctxErr
+		}
 		return rpcResponse{}, fmt.Errorf("read agent response: %w", err)
 	}
 	line = bytesTrimSpace(line)
@@ -295,6 +321,22 @@ func doRPC(ctx context.Context, cfg Config, req rpcRequest) (rpcResponse, error)
 		return rpcResponse{}, serverResponseError{message: resp.Error}
 	}
 	return resp, nil
+}
+
+func contextErrorForConnIO(ctx context.Context, err error) error {
+	if err == nil {
+		return nil
+	}
+	if ctxErr := ctx.Err(); ctxErr != nil {
+		return ctxErr
+	}
+	var netErr net.Error
+	if errors.As(err, &netErr) && netErr.Timeout() {
+		if deadline, ok := ctx.Deadline(); ok && !time.Now().Before(deadline) {
+			return context.DeadlineExceeded
+		}
+	}
+	return nil
 }
 
 func ensureAgentReady(ctx context.Context, cfg Config, forceRestart bool) error {

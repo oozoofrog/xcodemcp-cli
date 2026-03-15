@@ -16,6 +16,12 @@ import (
 
 const requestProtocolVersion = "2025-06-18"
 
+var supportedProtocolVersions = []string{
+	"2025-06-18",
+	"2025-03-26",
+	"2024-11-05",
+}
+
 type Command struct {
 	Path string
 	Args []string
@@ -452,10 +458,14 @@ func hasID(raw json.RawMessage) bool {
 }
 
 func isSupportedVersion(version string) bool {
-	switch version {
-	case "2025-06-18", "2025-03-26", "2024-11-05":
-		return true
-	default:
-		return false
+	for _, supported := range supportedProtocolVersions {
+		if version == supported {
+			return true
+		}
 	}
+	return false
+}
+
+func supportedVersions() []string {
+	return append([]string(nil), supportedProtocolVersions...)
 }

@@ -19,7 +19,7 @@ func TestParseCLIMCPConfigCodex(t *testing.T) {
 	if cfg.Command != commandMCPConfig {
 		t.Fatalf("command = %q, want %q", cfg.Command, commandMCPConfig)
 	}
-	if cfg.MCPClient != "codex" || cfg.ConfigName != "xcodecli" || !cfg.JSONOutput || cfg.Scope != "" {
+	if cfg.MCPClient != "codex" || cfg.ConfigName != "xcodecli" || !cfg.JSONOutput || cfg.Scope != "" || cfg.MCPMode != "agent" {
 		t.Fatalf("unexpected config: %+v", cfg)
 	}
 }
@@ -81,12 +81,19 @@ func TestParseCLIMCPConfigRejectsCodexScope(t *testing.T) {
 	}
 }
 
+func TestParseCLIMCPConfigRejectsInvalidMode(t *testing.T) {
+	_, _, err := parseCLI([]string{"mcp", "config", "--client", "codex", "--mode", "weird"})
+	if err == nil || !strings.Contains(err.Error(), "--mode must be one of") {
+		t.Fatalf("expected invalid mode error, got %v", err)
+	}
+}
+
 func TestParseCLIHelpMCPConfig(t *testing.T) {
 	_, usage, err := parseCLI([]string{"help", "mcp", "config"})
 	if err != errUsageRequested {
 		t.Fatalf("err = %v, want errUsageRequested", err)
 	}
-	for _, want := range []string{"mcp config", "--client <claude|codex|gemini>", "--write"} {
+	for _, want := range []string{"mcp config", "--client <claude|codex|gemini>", "--mode <agent|bridge>", "--write"} {
 		if !strings.Contains(usage, want) {
 			t.Fatalf("usage missing %q: %s", want, usage)
 		}
@@ -98,7 +105,7 @@ func TestParseCLIHelpMCPCodex(t *testing.T) {
 	if err != errUsageRequested {
 		t.Fatalf("err = %v, want errUsageRequested", err)
 	}
-	for _, want := range []string{"mcp codex", "shorthand alias", "--write"} {
+	for _, want := range []string{"mcp codex", "shorthand alias", "--mode <agent|bridge>", "--write"} {
 		if !strings.Contains(usage, want) {
 			t.Fatalf("usage missing %q: %s", want, usage)
 		}
@@ -144,11 +151,12 @@ func TestRunMCPConfigTextCodex(t *testing.T) {
 		text := stdout.String()
 		for _, want := range []string{
 			"client: codex",
+			"mode: agent",
 			"name: xcodecli",
 			"env:",
 			"MCP_XCODE_PID=123",
 			"MCP_XCODE_SESSION_ID=11111111-1111-1111-1111-111111111111",
-			"codex mcp add xcodecli --env MCP_XCODE_PID=123 --env MCP_XCODE_SESSION_ID=11111111-1111-1111-1111-111111111111 -- /tmp/xcodecli-test bridge",
+			"codex mcp add xcodecli --env MCP_XCODE_PID=123 --env MCP_XCODE_SESSION_ID=11111111-1111-1111-1111-111111111111 -- /tmp/xcodecli-test serve",
 			"write requested: false",
 		} {
 			if !strings.Contains(text, want) {
@@ -178,7 +186,7 @@ func TestRunMCPAliasTextCodex(t *testing.T) {
 func TestRunMCPConfigJSONWriteCodex(t *testing.T) {
 	withStubs(t, func() {
 		defaultMCPCommandRunner = func(ctx context.Context, name string, args []string) (externalCommandResult, error) {
-			wantArgs := []string{"mcp", "add", "xcodecli", "--env", "MCP_XCODE_SESSION_ID=11111111-1111-1111-1111-111111111111", "--", "/tmp/xcodecli-test", "bridge"}
+			wantArgs := []string{"mcp", "add", "xcodecli", "--env", "MCP_XCODE_SESSION_ID=11111111-1111-1111-1111-111111111111", "--", "/tmp/xcodecli-test", "serve"}
 			if name != "codex" || !reflect.DeepEqual(args, wantArgs) {
 				t.Fatalf("unexpected command: %s %v", name, args)
 			}
@@ -204,7 +212,10 @@ func TestRunMCPConfigJSONWriteCodex(t *testing.T) {
 		if result.Client != "codex" || result.Name != "xcodecli" {
 			t.Fatalf("unexpected result: %+v", result)
 		}
-		if result.Server.Command != "/tmp/xcodecli-test" || !reflect.DeepEqual(result.Server.Args, []string{"bridge"}) {
+		if result.Mode != "agent" {
+			t.Fatalf("mode = %q, want agent", result.Mode)
+		}
+		if result.Server.Command != "/tmp/xcodecli-test" || !reflect.DeepEqual(result.Server.Args, []string{"serve"}) {
 			t.Fatalf("unexpected server spec: %+v", result.Server)
 		}
 		if result.Write.ExitCode != 0 || !result.Write.Executed || !strings.Contains(result.Write.Stdout, "Added global MCP server") {
@@ -212,6 +223,32 @@ func TestRunMCPConfigJSONWriteCodex(t *testing.T) {
 		}
 		if result.Write.Stderr != "" {
 			t.Fatalf("unexpected write stderr: %q", result.Write.Stderr)
+		}
+	})
+}
+
+func TestRunMCPConfigBridgeModePreservesBridgeTarget(t *testing.T) {
+	withStubs(t, func() {
+		var stdout strings.Builder
+		var stderr strings.Builder
+		code := run(context.Background(), []string{
+			"mcp", "config",
+			"--client", "codex",
+			"--mode", "bridge",
+			"--json",
+		}, strings.NewReader(""), &stdout, &stderr, os.Environ())
+		if code != 0 {
+			t.Fatalf("exit code = %d, want 0 (stderr=%q)", code, stderr.String())
+		}
+		var result mcpConfigResult
+		if err := json.Unmarshal([]byte(stdout.String()), &result); err != nil {
+			t.Fatalf("stdout is not JSON result: %v", err)
+		}
+		if result.Mode != "bridge" {
+			t.Fatalf("mode = %q, want bridge", result.Mode)
+		}
+		if !reflect.DeepEqual(result.Server.Args, []string{"bridge"}) {
+			t.Fatalf("server args = %v, want [bridge]", result.Server.Args)
 		}
 	})
 }

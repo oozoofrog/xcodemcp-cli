@@ -128,7 +128,8 @@ func (s *server) handleConn(conn net.Conn) {
 	defer conn.Close()
 	defer s.connectionFinished()
 
-	line, err := bufio.NewReader(conn).ReadBytes('\n')
+	reader := bufio.NewReader(conn)
+	line, err := reader.ReadBytes('\n')
 	if err != nil {
 		s.writeResponse(conn, rpcResponse{Error: fmt.Sprintf("read agent request: %v", err)})
 		return
@@ -138,14 +139,20 @@ func (s *server) handleConn(conn net.Conn) {
 		s.writeResponse(conn, rpcResponse{Error: fmt.Sprintf("decode agent request: %v", err)})
 		return
 	}
-	resp := s.dispatch(req)
+	connCtx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go func() {
+		_, _ = reader.ReadByte()
+		cancel()
+	}()
+	resp := s.dispatch(connCtx, req)
 	_ = s.writeResponse(conn, resp)
 	if req.Method == "stop" && resp.Error == "" {
 		go s.shutdown()
 	}
 }
 
-func (s *server) dispatch(req rpcRequest) rpcResponse {
+func (s *server) dispatch(ctx context.Context, req rpcRequest) rpcResponse {
 	switch req.Method {
 	case "ping":
 		return rpcResponse{Status: s.runtimeStatus()}
@@ -154,13 +161,13 @@ func (s *server) dispatch(req rpcRequest) rpcResponse {
 	case "stop":
 		return rpcResponse{}
 	case "tools/list":
-		tools, err := s.listTools(req)
+		tools, err := s.listTools(ctx, req)
 		if err != nil {
 			return rpcResponse{Error: err.Error()}
 		}
 		return rpcResponse{Tools: tools}
 	case "tools/call":
-		result, err := s.callTool(req)
+		result, err := s.callTool(ctx, req)
 		if err != nil {
 			return rpcResponse{Error: err.Error()}
 		}
@@ -170,8 +177,8 @@ func (s *server) dispatch(req rpcRequest) rpcResponse {
 	}
 }
 
-func (s *server) listTools(req rpcRequest) ([]map[string]any, error) {
-	ctx, cancel := requestContext(req)
+func (s *server) listTools(parentCtx context.Context, req rpcRequest) ([]map[string]any, error) {
+	ctx, cancel := requestContext(parentCtx, req)
 	defer cancel()
 	pooled, retired := s.prepareSession(sessionKeyForRequest(req))
 	s.abortSessionsAsync(retired)
@@ -198,18 +205,21 @@ func (s *server) listTools(req rpcRequest) ([]map[string]any, error) {
 	select {
 	case res := <-resultCh:
 		if res.err != nil {
-			s.discardClient(pooled)
+			s.discardClientLocked(pooled)
+			if ctx.Err() != nil {
+				return nil, requestTimeoutError(req.TimeoutMS, requestTimeoutAction(req.Method, req.ToolName), ctx.Err())
+			}
 			return nil, res.err
 		}
 		return res.tools, nil
 	case <-ctx.Done():
-		s.discardClient(pooled)
+		s.discardClientLocked(pooled)
 		return nil, requestTimeoutError(req.TimeoutMS, requestTimeoutAction(req.Method, req.ToolName), ctx.Err())
 	}
 }
 
-func (s *server) callTool(req rpcRequest) (mcp.CallResult, error) {
-	ctx, cancel := requestContext(req)
+func (s *server) callTool(parentCtx context.Context, req rpcRequest) (mcp.CallResult, error) {
+	ctx, cancel := requestContext(parentCtx, req)
 	defer cancel()
 	pooled, retired := s.prepareSession(sessionKeyForRequest(req))
 	s.abortSessionsAsync(retired)
@@ -236,12 +246,15 @@ func (s *server) callTool(req rpcRequest) (mcp.CallResult, error) {
 	select {
 	case res := <-resultCh:
 		if res.err != nil {
-			s.discardClient(pooled)
+			s.discardClientLocked(pooled)
+			if ctx.Err() != nil {
+				return mcp.CallResult{}, requestTimeoutError(req.TimeoutMS, requestTimeoutAction(req.Method, req.ToolName), ctx.Err())
+			}
 			return mcp.CallResult{}, res.err
 		}
 		return res.callResult, nil
 	case <-ctx.Done():
-		s.discardClient(pooled)
+		s.discardClientLocked(pooled)
 		return mcp.CallResult{}, requestTimeoutError(req.TimeoutMS, requestTimeoutAction(req.Method, req.ToolName), ctx.Err())
 	}
 }
@@ -333,6 +346,12 @@ func (s *server) ensureClient(ctx context.Context, pooled *pooledSession, req rp
 }
 
 func (s *server) discardClient(pooled *pooledSession) {
+	pooled.mu.Lock()
+	defer pooled.mu.Unlock()
+	s.discardClientLocked(pooled)
+}
+
+func (s *server) discardClientLocked(pooled *pooledSession) {
 	if pooled.client != nil {
 		_ = pooled.client.Abort()
 		pooled.client = nil
@@ -476,11 +495,14 @@ func (s *server) shutdown() {
 	}
 }
 
-func requestContext(req rpcRequest) (context.Context, context.CancelFunc) {
-	if req.TimeoutMS <= 0 {
-		return context.WithCancel(context.Background())
+func requestContext(parent context.Context, req rpcRequest) (context.Context, context.CancelFunc) {
+	if parent == nil {
+		parent = context.Background()
 	}
-	return context.WithTimeout(context.Background(), time.Duration(req.TimeoutMS)*time.Millisecond)
+	if req.TimeoutMS <= 0 {
+		return context.WithCancel(parent)
+	}
+	return context.WithTimeout(parent, time.Duration(req.TimeoutMS)*time.Millisecond)
 }
 
 func setEnvValue(env []string, key, value string) []string {
