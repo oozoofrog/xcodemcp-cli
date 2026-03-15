@@ -215,6 +215,136 @@ func TestListToolsRecyclesLaunchAgentWhenRegisteredBinaryChanges(t *testing.T) {
 	}
 }
 
+func TestListToolsDoesNotBlockOnRetiredIdleSessionAbort(t *testing.T) {
+	oldFactory := newSessionClient
+	t.Cleanup(func() { newSessionClient = oldFactory })
+
+	abortStarted := make(chan struct{})
+	abortRelease := make(chan struct{})
+	abortFinished := make(chan struct{})
+
+	newSessionClient = func(ctx context.Context, cfg mcp.Config) (sessionClient, error) {
+		sessionID := envValue(cfg.Env, "MCP_XCODE_SESSION_ID")
+		client := &fakeSessionClient{
+			listToolsFn: func() ([]map[string]any, error) {
+				return []map[string]any{{"name": sessionID}}, nil
+			},
+		}
+		if sessionID == "session-a" {
+			client.abortFn = func() error {
+				close(abortStarted)
+				<-abortRelease
+				close(abortFinished)
+				return nil
+			}
+		}
+		return client, nil
+	}
+
+	s := &server{
+		cfg:      Config{ErrOut: io.Discard},
+		sessions: make(map[sessionKey]*pooledSession),
+	}
+	if _, err := s.listTools(rpcRequest{SessionID: "session-a", TimeoutMS: 1000}); err != nil {
+		t.Fatalf("listTools(session-a) returned error: %v", err)
+	}
+
+	done := make(chan error, 1)
+	started := time.Now()
+	go func() {
+		_, err := s.listTools(rpcRequest{SessionID: "session-b", TimeoutMS: 1000})
+		done <- err
+	}()
+
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("listTools(session-b) returned error: %v", err)
+		}
+		if elapsed := time.Since(started); elapsed > 250*time.Millisecond {
+			t.Fatalf("listTools(session-b) took %s, want handoff without waiting for abort", elapsed)
+		}
+	case <-time.After(250 * time.Millisecond):
+		t.Fatal("listTools(session-b) blocked on retired session abort")
+	}
+
+	select {
+	case <-abortStarted:
+	case <-time.After(time.Second):
+		t.Fatal("retired session abort did not start")
+	}
+
+	close(abortRelease)
+	select {
+	case <-abortFinished:
+	case <-time.After(time.Second):
+		t.Fatal("retired session abort did not finish")
+	}
+}
+
+func TestFinishSessionDoesNotBlockOnRetiredInFlightAbort(t *testing.T) {
+	abortStarted := make(chan struct{})
+	abortRelease := make(chan struct{})
+	abortFinished := make(chan struct{})
+
+	key := sessionKey{SessionID: "session-a"}
+	pooled := &pooledSession{
+		key:            key,
+		client:         &fakeSessionClient{},
+		inFlight:       1,
+		retireWhenIdle: true,
+	}
+	pooled.client = &fakeSessionClient{
+		abortFn: func() error {
+			close(abortStarted)
+			<-abortRelease
+			close(abortFinished)
+			return nil
+		},
+	}
+
+	s := &server{
+		cfg:      Config{ErrOut: io.Discard},
+		sessions: map[sessionKey]*pooledSession{key: pooled},
+	}
+
+	started := time.Now()
+	done := make(chan struct{})
+	go func() {
+		s.finishSession(pooled)
+		close(done)
+	}()
+
+	select {
+	case <-done:
+		if elapsed := time.Since(started); elapsed > 250*time.Millisecond {
+			t.Fatalf("finishSession took %s, want return without waiting for abort", elapsed)
+		}
+	case <-time.After(250 * time.Millisecond):
+		t.Fatal("finishSession blocked on retired session abort")
+	}
+
+	s.mu.Lock()
+	_, exists := s.sessions[key]
+	s.mu.Unlock()
+	if exists {
+		t.Fatal("retired in-flight session remained in the pool")
+	}
+
+	select {
+	case <-abortStarted:
+	case <-time.After(time.Second):
+		t.Fatal("retired in-flight abort did not start")
+	}
+
+	close(abortRelease)
+	select {
+	case <-abortFinished:
+	case <-time.After(time.Second):
+		t.Fatal("retired in-flight abort did not finish")
+	}
+}
+
 func TestListToolsAutostartHonorsCallerTimeout(t *testing.T) {
 	_, paths := newShortPaths(t)
 	clientCfg := Config{
@@ -495,6 +625,41 @@ type fakeLaunchd struct {
 	kickstartCalls int
 	bootoutCalls   int
 	harness        *serverHarness
+}
+
+type fakeSessionClient struct {
+	listToolsFn func() ([]map[string]any, error)
+	callToolFn  func(string, map[string]any) (mcp.CallResult, error)
+	closeFn     func() error
+	abortFn     func() error
+}
+
+func (f *fakeSessionClient) ListTools() ([]map[string]any, error) {
+	if f.listToolsFn != nil {
+		return f.listToolsFn()
+	}
+	return nil, nil
+}
+
+func (f *fakeSessionClient) CallTool(name string, arguments map[string]any) (mcp.CallResult, error) {
+	if f.callToolFn != nil {
+		return f.callToolFn(name, arguments)
+	}
+	return mcp.CallResult{}, nil
+}
+
+func (f *fakeSessionClient) Close() error {
+	if f.closeFn != nil {
+		return f.closeFn()
+	}
+	return nil
+}
+
+func (f *fakeSessionClient) Abort() error {
+	if f.abortFn != nil {
+		return f.abortFn()
+	}
+	return nil
 }
 
 type blockingLaunchd struct{}

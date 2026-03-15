@@ -22,9 +22,20 @@ type sessionKey struct {
 	DeveloperDir string
 }
 
+type sessionClient interface {
+	ListTools() ([]map[string]any, error)
+	CallTool(name string, arguments map[string]any) (mcp.CallResult, error)
+	Close() error
+	Abort() error
+}
+
+var newSessionClient = func(ctx context.Context, cfg mcp.Config) (sessionClient, error) {
+	return mcp.NewClient(ctx, cfg)
+}
+
 type pooledSession struct {
 	key            sessionKey
-	client         *mcp.Client
+	client         sessionClient
 	mu             sync.Mutex
 	inFlight       int
 	retireWhenIdle bool
@@ -152,7 +163,7 @@ func (s *server) listTools(req rpcRequest) ([]map[string]any, error) {
 	ctx, cancel := requestContext(req)
 	defer cancel()
 	pooled, retired := s.prepareSession(sessionKeyForRequest(req))
-	s.closeSessions(retired)
+	s.abortSessionsAsync(retired)
 	pooled.mu.Lock()
 	defer func() {
 		pooled.mu.Unlock()
@@ -190,7 +201,7 @@ func (s *server) callTool(req rpcRequest) (mcp.CallResult, error) {
 	ctx, cancel := requestContext(req)
 	defer cancel()
 	pooled, retired := s.prepareSession(sessionKeyForRequest(req))
-	s.closeSessions(retired)
+	s.abortSessionsAsync(retired)
 	pooled.mu.Lock()
 	defer func() {
 		pooled.mu.Unlock()
@@ -278,11 +289,11 @@ func (s *server) finishSession(pooled *pooledSession) {
 	s.mu.Unlock()
 
 	if retire {
-		s.closeSession(pooled)
+		s.abortSessionAsync(pooled)
 	}
 }
 
-func (s *server) ensureClient(ctx context.Context, pooled *pooledSession, req rpcRequest) (*mcp.Client, error) {
+func (s *server) ensureClient(ctx context.Context, pooled *pooledSession, req rpcRequest) (sessionClient, error) {
 	if pooled.client != nil {
 		return pooled.client, nil
 	}
@@ -290,7 +301,7 @@ func (s *server) ensureClient(ctx context.Context, pooled *pooledSession, req rp
 	if req.DeveloperDir != "" {
 		env = setEnvValue(env, "DEVELOPER_DIR", req.DeveloperDir)
 	}
-	client, err := mcp.NewClient(ctx, mcp.Config{
+	client, err := newSessionClient(ctx, mcp.Config{
 		Command: s.cfg.Command,
 		Env:     env,
 		Debug:   false,
@@ -317,10 +328,35 @@ func (s *server) discardClient(pooled *pooledSession) {
 	}
 }
 
-func (s *server) closeSessions(sessions []*pooledSession) {
+func (s *server) abortSessionsAsync(sessions []*pooledSession) {
 	for _, pooled := range sessions {
-		s.closeSession(pooled)
+		s.abortSessionAsync(pooled)
 	}
+}
+
+func (s *server) abortSessionAsync(pooled *pooledSession) {
+	if pooled == nil {
+		return
+	}
+	go func() {
+		client := detachClient(pooled)
+		if client == nil {
+			return
+		}
+		if err := client.Abort(); err != nil {
+			if s.cfg.ErrOut != nil {
+				fmt.Fprintf(s.cfg.ErrOut, "[debug] abort retired mcpbridge session: %v\n", err)
+			}
+		}
+	}()
+}
+
+func detachClient(pooled *pooledSession) sessionClient {
+	pooled.mu.Lock()
+	defer pooled.mu.Unlock()
+	client := pooled.client
+	pooled.client = nil
+	return client
 }
 
 func (s *server) closeSession(pooled *pooledSession) {
