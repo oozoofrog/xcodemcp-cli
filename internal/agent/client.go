@@ -153,6 +153,38 @@ func Uninstall(ctx context.Context, cfg Config) error {
 }
 
 func doWithAutostart(ctx context.Context, cfg Config, req rpcRequest) (rpcResponse, error) {
+	mismatch, registeredBinary, currentBinary := launchAgentBinaryMismatch(cfg)
+	if mismatch {
+		if req.Debug {
+			fmt.Fprintf(cfg.ErrOut, "[debug] registered LaunchAgent binary %s does not match current binary %s; recycling LaunchAgent %s\n", registeredBinary, currentBinary, cfg.Label)
+		}
+		if err := ensureAgentReady(ctx, cfg); err != nil {
+			if ctx.Err() != nil {
+				return rpcResponse{}, requestTimeoutError(req.TimeoutMS, "starting the LaunchAgent or initializing the mcpbridge session", ctx.Err())
+			}
+			return rpcResponse{}, err
+		}
+		effectiveReq, err := requestWithRemainingTimeout(ctx, req)
+		if err != nil {
+			return rpcResponse{}, requestTimeoutError(req.TimeoutMS, requestTimeoutAction(req.Method, req.ToolName), err)
+		}
+		resp, err := doRPC(ctx, cfg, effectiveReq)
+		if err != nil {
+			var serverErr serverResponseError
+			if errors.As(err, &serverErr) {
+				return rpcResponse{}, err
+			}
+			if ctx.Err() != nil {
+				var unavailable unavailableError
+				if errors.As(err, &unavailable) && unavailable.stage == "connect" {
+					return rpcResponse{}, requestTimeoutError(req.TimeoutMS, "connecting to the LaunchAgent after startup", ctx.Err())
+				}
+				return rpcResponse{}, requestTimeoutError(req.TimeoutMS, requestTimeoutAction(req.Method, req.ToolName), ctx.Err())
+			}
+		}
+		return resp, err
+	}
+
 	effectiveReq, err := requestWithRemainingTimeout(ctx, req)
 	if err != nil {
 		return rpcResponse{}, requestTimeoutError(req.TimeoutMS, requestTimeoutAction(req.Method, req.ToolName), err)
@@ -192,6 +224,18 @@ func doWithAutostart(ctx context.Context, cfg Config, req rpcRequest) (rpcRespon
 		}
 	}
 	return resp, err
+}
+
+func launchAgentBinaryMismatch(cfg Config) (bool, string, string) {
+	registeredBinary, err := readLaunchAgentBinaryPath(cfg.Paths.PlistPath)
+	if err != nil || strings.TrimSpace(registeredBinary) == "" {
+		return false, "", ""
+	}
+	currentBinary, err := cfg.ExecutablePath()
+	if err != nil || strings.TrimSpace(currentBinary) == "" {
+		return false, registeredBinary, ""
+	}
+	return !samePath(currentBinary, registeredBinary), registeredBinary, currentBinary
 }
 
 func doRPC(ctx context.Context, cfg Config, req rpcRequest) (rpcResponse, error) {

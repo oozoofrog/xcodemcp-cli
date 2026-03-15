@@ -23,9 +23,11 @@ type sessionKey struct {
 }
 
 type pooledSession struct {
-	key    sessionKey
-	client *mcp.Client
-	mu     sync.Mutex
+	key            sessionKey
+	client         *mcp.Client
+	mu             sync.Mutex
+	inFlight       int
+	retireWhenIdle bool
 }
 
 type server struct {
@@ -149,13 +151,13 @@ func (s *server) dispatch(req rpcRequest) rpcResponse {
 func (s *server) listTools(req rpcRequest) ([]map[string]any, error) {
 	ctx, cancel := requestContext(req)
 	defer cancel()
-	key := sessionKey{XcodePID: req.XcodePID, SessionID: req.SessionID, DeveloperDir: req.DeveloperDir}
-	pooled, err := s.getSession(key)
-	if err != nil {
-		return nil, err
-	}
+	pooled, retired := s.prepareSession(sessionKeyForRequest(req))
+	s.closeSessions(retired)
 	pooled.mu.Lock()
-	defer pooled.mu.Unlock()
+	defer func() {
+		pooled.mu.Unlock()
+		s.finishSession(pooled)
+	}()
 
 	client, err := s.ensureClient(ctx, pooled, req)
 	if err != nil {
@@ -187,13 +189,13 @@ func (s *server) listTools(req rpcRequest) ([]map[string]any, error) {
 func (s *server) callTool(req rpcRequest) (mcp.CallResult, error) {
 	ctx, cancel := requestContext(req)
 	defer cancel()
-	key := sessionKey{XcodePID: req.XcodePID, SessionID: req.SessionID, DeveloperDir: req.DeveloperDir}
-	pooled, err := s.getSession(key)
-	if err != nil {
-		return mcp.CallResult{}, err
-	}
+	pooled, retired := s.prepareSession(sessionKeyForRequest(req))
+	s.closeSessions(retired)
 	pooled.mu.Lock()
-	defer pooled.mu.Unlock()
+	defer func() {
+		pooled.mu.Unlock()
+		s.finishSession(pooled)
+	}()
 
 	client, err := s.ensureClient(ctx, pooled, req)
 	if err != nil {
@@ -222,15 +224,62 @@ func (s *server) callTool(req rpcRequest) (mcp.CallResult, error) {
 	}
 }
 
-func (s *server) getSession(key sessionKey) (*pooledSession, error) {
+func sessionKeyForRequest(req rpcRequest) sessionKey {
+	return sessionKey{
+		XcodePID:     req.XcodePID,
+		SessionID:    req.SessionID,
+		DeveloperDir: req.DeveloperDir,
+	}
+}
+
+func (s *server) prepareSession(key sessionKey) (*pooledSession, []*pooledSession) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+
 	pooled := s.sessions[key]
 	if pooled == nil {
 		pooled = &pooledSession{key: key}
 		s.sessions[key] = pooled
 	}
-	return pooled, nil
+	pooled.inFlight++
+	pooled.retireWhenIdle = false
+
+	retired := make([]*pooledSession, 0)
+	for otherKey, other := range s.sessions {
+		if other == pooled {
+			continue
+		}
+		if other.inFlight == 0 {
+			delete(s.sessions, otherKey)
+			other.retireWhenIdle = false
+			retired = append(retired, other)
+			continue
+		}
+		other.retireWhenIdle = true
+	}
+
+	return pooled, retired
+}
+
+func (s *server) finishSession(pooled *pooledSession) {
+	var retire bool
+
+	s.mu.Lock()
+	if pooled.inFlight > 0 {
+		pooled.inFlight--
+	}
+	if pooled.inFlight == 0 && pooled.retireWhenIdle {
+		if current := s.sessions[pooled.key]; current == pooled {
+			delete(s.sessions, pooled.key)
+		}
+		pooled.retireWhenIdle = false
+		retire = true
+	}
+	s.mu.Unlock()
+
+	if retire {
+		s.closeSession(pooled)
+	}
 }
 
 func (s *server) ensureClient(ctx context.Context, pooled *pooledSession, req rpcRequest) (*mcp.Client, error) {
@@ -264,6 +313,21 @@ func (s *server) ensureClient(ctx context.Context, pooled *pooledSession, req rp
 func (s *server) discardClient(pooled *pooledSession) {
 	if pooled.client != nil {
 		_ = pooled.client.Abort()
+		pooled.client = nil
+	}
+}
+
+func (s *server) closeSessions(sessions []*pooledSession) {
+	for _, pooled := range sessions {
+		s.closeSession(pooled)
+	}
+}
+
+func (s *server) closeSession(pooled *pooledSession) {
+	pooled.mu.Lock()
+	defer pooled.mu.Unlock()
+	if pooled.client != nil {
+		_ = pooled.client.Close()
 		pooled.client = nil
 	}
 }

@@ -90,6 +90,131 @@ func TestDefaultIdleTimeoutIs24Hours(t *testing.T) {
 	}
 }
 
+func TestListToolsReplacesIdleSessionWhenSessionKeyChanges(t *testing.T) {
+	tempDir, paths := newShortPaths(t)
+	spawnFile := filepath.Join(tempDir, "spawn.log")
+	serverCfg := testServerConfig(t, paths, spawnFile, 5*time.Second)
+	harness := newServerHarness(t, serverCfg)
+	launchd := &fakeLaunchd{harness: harness}
+	clientCfg := testClientConfig(paths, spawnFile, 5*time.Second, launchd)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	if _, err := ListTools(ctx, clientCfg, Request{Timeout: 2 * time.Second, SessionID: "session-a"}); err != nil {
+		t.Fatalf("ListTools(session-a) returned error: %v", err)
+	}
+	if _, err := ListTools(ctx, clientCfg, Request{Timeout: 2 * time.Second, SessionID: "session-b"}); err != nil {
+		t.Fatalf("ListTools(session-b) returned error: %v", err)
+	}
+
+	status, err := StatusInfo(ctx, clientCfg)
+	if err != nil {
+		t.Fatalf("StatusInfo returned error: %v", err)
+	}
+	if status.BackendSessions != 1 {
+		t.Fatalf("BackendSessions = %d, want 1 after replacing idle session", status.BackendSessions)
+	}
+	if count := helperSpawnCount(t, spawnFile); count != 2 {
+		t.Fatalf("backend helper spawn count = %d, want 2 after session change", count)
+	}
+
+	if _, err := ListTools(ctx, clientCfg, Request{Timeout: 2 * time.Second, SessionID: "session-b"}); err != nil {
+		t.Fatalf("ListTools(session-b reuse) returned error: %v", err)
+	}
+	if count := helperSpawnCount(t, spawnFile); count != 2 {
+		t.Fatalf("backend helper spawn count = %d, want 2 after reusing latest session", count)
+	}
+}
+
+func TestListToolsRetiresPreviousInFlightSessionAfterHandoff(t *testing.T) {
+	tempDir, paths := newShortPaths(t)
+	spawnFile := filepath.Join(tempDir, "spawn.log")
+	serverCfg := testServerConfig(t, paths, spawnFile, 5*time.Second)
+	serverCfg.Command = helperCommand("slow-list")
+	harness := newServerHarness(t, serverCfg)
+	launchd := &fakeLaunchd{harness: harness}
+	clientCfg := testClientConfig(paths, spawnFile, 5*time.Second, launchd)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	errCh := make(chan error, 2)
+	go func() {
+		_, err := ListTools(ctx, clientCfg, Request{Timeout: 2 * time.Second, SessionID: "session-a"})
+		errCh <- err
+	}()
+	waitForSpawnCount(t, spawnFile, 1, 2*time.Second)
+	go func() {
+		_, err := ListTools(ctx, clientCfg, Request{Timeout: 2 * time.Second, SessionID: "session-b"})
+		errCh <- err
+	}()
+
+	for i := 0; i < 2; i++ {
+		if err := <-errCh; err != nil {
+			t.Fatalf("ListTools concurrent call %d returned error: %v", i+1, err)
+		}
+	}
+
+	status, err := StatusInfo(ctx, clientCfg)
+	if err != nil {
+		t.Fatalf("StatusInfo returned error: %v", err)
+	}
+	if status.BackendSessions != 1 {
+		t.Fatalf("BackendSessions = %d, want 1 after retiring previous in-flight session", status.BackendSessions)
+	}
+	if count := helperSpawnCount(t, spawnFile); count != 2 {
+		t.Fatalf("backend helper spawn count = %d, want 2 after handoff", count)
+	}
+
+	if _, err := ListTools(ctx, clientCfg, Request{Timeout: 2 * time.Second, SessionID: "session-b"}); err != nil {
+		t.Fatalf("ListTools(session-b reuse) returned error: %v", err)
+	}
+	if count := helperSpawnCount(t, spawnFile); count != 2 {
+		t.Fatalf("backend helper spawn count = %d, want 2 after reusing handed-off session", count)
+	}
+}
+
+func TestListToolsRecyclesLaunchAgentWhenRegisteredBinaryChanges(t *testing.T) {
+	tempDir, paths := newShortPaths(t)
+	spawnFile := filepath.Join(tempDir, "spawn.log")
+	serverCfg := testServerConfig(t, paths, spawnFile, 5*time.Second)
+	harness := newServerHarness(t, serverCfg)
+	launchd := &fakeLaunchd{harness: harness, bootstrapped: true}
+	clientCfg := testClientConfig(paths, spawnFile, 5*time.Second, launchd)
+	clientCfg.ExecutablePath = func() (string, error) { return "/tmp/xcodecli-new", nil }
+
+	if err := os.WriteFile(paths.PlistPath, []byte(renderLaunchAgentPlist(paths, LaunchAgentLabel, "/tmp/xcodecli-old")), 0o644); err != nil {
+		t.Fatalf("WriteFile(%q) failed: %v", paths.PlistPath, err)
+	}
+	if err := harness.start(); err != nil {
+		t.Fatalf("harness.start() returned error: %v", err)
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if _, err := ListTools(ctx, clientCfg, Request{Timeout: 2 * time.Second}); err != nil {
+		t.Fatalf("ListTools returned error: %v", err)
+	}
+
+	registeredBinary, err := readLaunchAgentBinaryPath(paths.PlistPath)
+	if err != nil {
+		t.Fatalf("readLaunchAgentBinaryPath returned error: %v", err)
+	}
+	if registeredBinary != "/tmp/xcodecli-new" {
+		t.Fatalf("registered binary = %q, want /tmp/xcodecli-new", registeredBinary)
+	}
+	if launchd.bootoutCalls != 1 {
+		t.Fatalf("bootoutCalls = %d, want 1", launchd.bootoutCalls)
+	}
+	if launchd.bootstrapCalls != 1 {
+		t.Fatalf("bootstrapCalls = %d, want 1", launchd.bootstrapCalls)
+	}
+	if count := helperSpawnCount(t, spawnFile); count != 1 {
+		t.Fatalf("backend helper spawn count = %d, want 1 after stale-agent recycle", count)
+	}
+}
+
 func TestListToolsAutostartHonorsCallerTimeout(t *testing.T) {
 	_, paths := newShortPaths(t)
 	clientCfg := Config{
@@ -364,9 +489,12 @@ func readyAfterDialer(start time.Time, readyAfter time.Duration) func(ctx contex
 }
 
 type fakeLaunchd struct {
-	mu           sync.Mutex
-	bootstrapped bool
-	harness      *serverHarness
+	mu             sync.Mutex
+	bootstrapped   bool
+	bootstrapCalls int
+	kickstartCalls int
+	bootoutCalls   int
+	harness        *serverHarness
 }
 
 type blockingLaunchd struct{}
@@ -419,6 +547,7 @@ func (f *fakeLaunchd) Print(ctx context.Context, target string) (string, error) 
 func (f *fakeLaunchd) Bootstrap(ctx context.Context, domainTarget, plistPath string) error {
 	f.mu.Lock()
 	f.bootstrapped = true
+	f.bootstrapCalls++
 	f.mu.Unlock()
 	return f.harness.start()
 }
@@ -426,6 +555,7 @@ func (f *fakeLaunchd) Bootstrap(ctx context.Context, domainTarget, plistPath str
 func (f *fakeLaunchd) Kickstart(ctx context.Context, serviceTarget string) error {
 	f.mu.Lock()
 	bootstrapped := f.bootstrapped
+	f.kickstartCalls++
 	f.mu.Unlock()
 	if !bootstrapped {
 		return fmt.Errorf("service %s not loaded", serviceTarget)
@@ -436,6 +566,7 @@ func (f *fakeLaunchd) Kickstart(ctx context.Context, serviceTarget string) error
 func (f *fakeLaunchd) Bootout(ctx context.Context, target string) error {
 	f.mu.Lock()
 	f.bootstrapped = false
+	f.bootoutCalls++
 	f.mu.Unlock()
 	return f.harness.stop()
 }
@@ -538,6 +669,30 @@ func helperSpawnCount(t *testing.T, path string) int {
 	return len(strings.Split(trimmed, "\n"))
 }
 
+func waitForSpawnCount(t *testing.T, path string, want int, timeout time.Duration) {
+	t.Helper()
+	deadline := time.Now().Add(timeout)
+	for {
+		data, err := os.ReadFile(path)
+		if err == nil {
+			trimmed := strings.TrimSpace(string(data))
+			count := 0
+			if trimmed != "" {
+				count = len(strings.Split(trimmed, "\n"))
+			}
+			if count >= want {
+				return
+			}
+		} else if !os.IsNotExist(err) {
+			t.Fatalf("ReadFile(%q) failed: %v", path, err)
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("timed out waiting for spawn count %d at %s", want, path)
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+}
+
 func TestAgentHelperProcess(t *testing.T) {
 	if os.Getenv("GO_WANT_AGENT_HELPER_PROCESS") != "1" {
 		return
@@ -578,6 +733,10 @@ func TestAgentHelperProcess(t *testing.T) {
 		case "notifications/initialized":
 			continue
 		case "tools/list":
+			switch helperMode(t) {
+			case "slow-list":
+				time.Sleep(300 * time.Millisecond)
+			}
 			writeHelperResponse(t, map[string]any{"jsonrpc": "2.0", "id": id, "result": map[string]any{"tools": []map[string]any{{"name": "list_windows", "description": "List Xcode windows"}}}})
 		case "tools/call":
 			params, _ := req["params"].(map[string]any)

@@ -160,6 +160,7 @@ func TestParseCLIToolCallDefaultTimeoutsByTool(t *testing.T) {
 	}{
 		{[]string{"tool", "call", "BuildProject", "--json", "{}"}, defaultToolCallLongRequestTimeout},
 		{[]string{"tool", "call", "XcodeRead", "--json", "{}"}, defaultToolCallReadRequestTimeout},
+		{[]string{"tool", "call", "DocumentationSearch", "--json", "{}"}, defaultToolCallReadRequestTimeout},
 		{[]string{"tool", "call", "XcodeWrite", "--json", "{}"}, defaultToolCallWriteRequestTimeout},
 		{[]string{"tool", "call", "build_sim", "--json", "{}"}, defaultToolCallFallbackTimeout},
 	}

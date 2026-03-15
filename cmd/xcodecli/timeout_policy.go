@@ -19,7 +19,7 @@ const (
 
 func defaultToolCallTimeout(toolName string) time.Duration {
 	switch toolName {
-	case "XcodeListWindows", "XcodeLS", "XcodeGlob", "XcodeRead", "XcodeGrep", "GetBuildLog", "GetTestList", "XcodeListNavigatorIssues":
+	case "XcodeListWindows", "XcodeLS", "XcodeGlob", "XcodeRead", "XcodeGrep", "GetBuildLog", "GetTestList", "XcodeListNavigatorIssues", "DocumentationSearch":
 		return defaultToolCallReadRequestTimeout
 	case "XcodeUpdate", "XcodeWrite", "XcodeRefreshCodeIssuesInFile":
 		return defaultToolCallWriteRequestTimeout
