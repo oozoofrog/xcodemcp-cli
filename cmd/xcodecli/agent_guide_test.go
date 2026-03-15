@@ -24,6 +24,16 @@ func TestParseCLIAgentGuide(t *testing.T) {
 	}
 }
 
+func TestParseCLIAgentGuideDefaultTimeout(t *testing.T) {
+	cfg, _, err := parseCLI([]string{"agent", "guide", "build Unicody"})
+	if err != nil {
+		t.Fatalf("parseCLI returned error: %v", err)
+	}
+	if cfg.Timeout != defaultAgentGuideRequestTimeout {
+		t.Fatalf("timeout = %s, want %s", cfg.Timeout, defaultAgentGuideRequestTimeout)
+	}
+}
+
 func TestParseCLIHelpAgentGuide(t *testing.T) {
 	_, usage, err := parseCLI([]string{"help", "agent", "guide"})
 	if err != errUsageRequested {
@@ -48,6 +58,27 @@ func TestRootAndAgentUsageIncludeGuide(t *testing.T) {
 				t.Fatalf("%s usage missing %q: %s", tc.name, want, tc.usage)
 			}
 		}
+	}
+}
+
+func TestGuideNextCommandsUseUpdatedTimeouts(t *testing.T) {
+	if got := formatBuildProjectCommand("tab1"); !strings.Contains(got, "--timeout 30m") {
+		t.Fatalf("BuildProject command = %q, want --timeout 30m", got)
+	}
+	if got := formatRunAllTestsCommand("tab1"); !strings.Contains(got, "--timeout 30m") {
+		t.Fatalf("RunAllTests command = %q, want --timeout 30m", got)
+	}
+	if got := formatRunSomeTestsTemplate("tab1"); !strings.Contains(got, "--timeout 30m") {
+		t.Fatalf("RunSomeTests command = %q, want --timeout 30m", got)
+	}
+	if got := formatXcodeUpdateTemplate("tab1", "Foo.swift"); !strings.Contains(got, "--timeout 120s") {
+		t.Fatalf("XcodeUpdate command = %q, want --timeout 120s", got)
+	}
+	if got := formatRefreshIssuesCommand("tab1", "Foo.swift"); !strings.Contains(got, "--timeout 120s") {
+		t.Fatalf("Refresh issues command = %q, want --timeout 120s", got)
+	}
+	if got := formatXcodeWriteTemplate("tab1", "Foo.swift"); !strings.Contains(got, "--timeout 120s") {
+		t.Fatalf("XcodeWrite command = %q, want --timeout 120s", got)
 	}
 }
 

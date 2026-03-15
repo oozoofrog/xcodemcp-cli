@@ -10,7 +10,7 @@ import (
 const (
 	LaunchAgentLabel   = "io.oozoofrog.xcodecli"
 	SupportDirName     = "xcodecli"
-	DefaultIdleTimeout = 10 * time.Minute
+	DefaultIdleTimeout = 24 * time.Hour
 )
 
 type Paths struct {

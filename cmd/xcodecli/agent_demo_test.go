@@ -25,6 +25,16 @@ func TestParseCLIAgentDemo(t *testing.T) {
 	}
 }
 
+func TestParseCLIAgentDemoDefaultTimeout(t *testing.T) {
+	cfg, _, err := parseCLI([]string{"agent", "demo"})
+	if err != nil {
+		t.Fatalf("parseCLI returned error: %v", err)
+	}
+	if cfg.Timeout != defaultAgentDemoRequestTimeout {
+		t.Fatalf("timeout = %s, want %s", cfg.Timeout, defaultAgentDemoRequestTimeout)
+	}
+}
+
 func TestParseCLIHelpAgentDemo(t *testing.T) {
 	_, usage, err := parseCLI([]string{"help", "agent", "demo"})
 	if err != errUsageRequested {

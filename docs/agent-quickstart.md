@@ -60,7 +60,7 @@ Look for:
 
 ```bash
 ./xcodecli tools list
-./xcodecli tools list --json
+./xcodecli tools list --json --timeout 60s
 ```
 
 If this is the first `tools` request, `xcodecli` may install and bootstrap a per-user LaunchAgent automatically.
@@ -69,7 +69,7 @@ If this is the first `tools` request, `xcodecli` may install and bootstrap a per
 
 ```bash
 ./xcodecli tool inspect XcodeListWindows
-./xcodecli tool inspect XcodeListWindows --json
+./xcodecli tool inspect XcodeListWindows --json --timeout 60s
 ```
 
 Use `tool inspect` when you need schema reassurance. For the common workflows above, `agent guide` should usually tell you what to call without making this the first step.
@@ -88,7 +88,7 @@ Read the payload from a file:
 cat > /tmp/payload.json <<'JSON'
 {"scheme":"Demo"}
 JSON
-./xcodecli tool call BuildProject --json @/tmp/payload.json
+./xcodecli tool call BuildProject --timeout 30m --json @/tmp/payload.json
 ```
 
 Read the payload from stdin:
@@ -109,10 +109,19 @@ Use the `tabIdentifier` returned by `XcodeListWindows` to continue the flow:
 
 If you want the next mutating step after discovery, that is where you would choose something like `BuildProject` or `RunAllTests`.
 
+## Request timeout vs mcpbridge session idle timeout
+
+- `--timeout` is the **request timeout** for a single `tools`, `tool`, `agent guide`, or `agent demo` command.
+- The request timeout includes first-use LaunchAgent startup, `mcpbridge` session initialization, and any auth prompts.
+- The default **mcpbridge session idle timeout** is `24h`, which controls how long pooled `mcpbridge` sessions stay alive while idle.
+- Active requests are **not** interrupted by the `mcpbridge session idle timeout`.
+
 ## 9. Troubleshooting
 
 ### The tool call times out
+- This is the **request timeout**, not the `mcpbridge session idle timeout`.
 - Verify Xcode is open and a workspace/project window is visible.
+- Retry with a larger `--timeout` (for example `--timeout 30m` for `BuildProject` / `RunAllTests`).
 - Retry with `--debug`.
 - Re-run `./xcodecli doctor --json`.
 
