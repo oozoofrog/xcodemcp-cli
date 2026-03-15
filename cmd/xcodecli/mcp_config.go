@@ -38,6 +38,7 @@ type mcpConfigWriteResult struct {
 
 type mcpConfigResult struct {
 	Client         string               `json:"client"`
+	Mode           string               `json:"mode"`
 	Name           string               `json:"name"`
 	Scope          string               `json:"scope,omitempty"`
 	Server         mcpConfigServerSpec  `json:"server"`
@@ -106,9 +107,13 @@ func runMCPConfig(ctx context.Context, cfg cliConfig, stdout, stderr io.Writer) 
 }
 
 func buildMCPConfigResult(cfg cliConfig, executablePath string) (mcpConfigResult, error) {
+	serverArgs := []string{"serve"}
+	if cfg.MCPMode == "bridge" {
+		serverArgs = []string{"bridge"}
+	}
 	server := mcpConfigServerSpec{
 		Command: executablePath,
-		Args:    []string{"bridge"},
+		Args:    serverArgs,
 		Env:     explicitMCPConfigEnv(cfg),
 	}
 
@@ -120,6 +125,7 @@ func buildMCPConfigResult(cfg cliConfig, executablePath string) (mcpConfigResult
 	command := append([]string{invocation.Name}, invocation.Args...)
 	return mcpConfigResult{
 		Client:         cfg.MCPClient,
+		Mode:           cfg.MCPMode,
 		Name:           cfg.ConfigName,
 		Scope:          cfg.Scope,
 		Server:         server,
@@ -297,6 +303,7 @@ func envArgs(flagName string, env map[string]string) []string {
 func formatMCPConfigResult(result mcpConfigResult) string {
 	var buf strings.Builder
 	fmt.Fprintf(&buf, "client: %s\n", result.Client)
+	fmt.Fprintf(&buf, "mode: %s\n", result.Mode)
 	fmt.Fprintf(&buf, "name: %s\n", result.Name)
 	if result.Scope != "" {
 		fmt.Fprintf(&buf, "scope: %s\n", result.Scope)

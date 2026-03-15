@@ -16,6 +16,7 @@ type commandName string
 const (
 	commandVersion        commandName = "version"
 	commandBridge         commandName = "bridge"
+	commandServe          commandName = "serve"
 	commandDoctor         commandName = "doctor"
 	commandMCPConfig      commandName = "mcp-config"
 	commandToolsList      commandName = "tools-list"
@@ -40,6 +41,7 @@ type cliConfig struct {
 	MCPClient          string
 	ConfigName         string
 	Scope              string
+	MCPMode            string
 	ToolName           string
 	Intent             string
 	ToolInputJSON      string
@@ -64,6 +66,10 @@ func parseCLI(args []string) (cliConfig, string, error) {
 		cfg, err := parseBridgeFlags("xcodecli bridge", args[1:])
 		cfg.Command = commandBridge
 		return cfg, bridgeUsage(), err
+	case string(commandServe):
+		cfg, err := parseServeFlags("xcodecli serve", args[1:])
+		cfg.Command = commandServe
+		return cfg, serveUsage(), err
 	case string(commandDoctor):
 		cfg, err := parseDoctorFlags("xcodecli doctor", args[1:])
 		cfg.Command = commandDoctor
@@ -95,6 +101,8 @@ func parseHelp(args []string) (cliConfig, string, error) {
 		return cliConfig{Command: commandVersion}, versionUsage(), errUsageRequested
 	case string(commandBridge):
 		return cliConfig{}, bridgeUsage(), errUsageRequested
+	case string(commandServe):
+		return cliConfig{}, serveUsage(), errUsageRequested
 	case string(commandDoctor):
 		return cliConfig{}, doctorUsage(), errUsageRequested
 	case "mcp":
@@ -278,13 +286,18 @@ func parseDoctorFlags(name string, args []string) (cliConfig, error) {
 	return cfg, nil
 }
 
+func parseServeFlags(name string, args []string) (cliConfig, error) {
+	return parseBridgeFlags(name, args)
+}
+
 func parseMCPConfigFlags(name string, args []string) (cliConfig, error) {
 	fs := newFlagSet(name)
-	cfg := cliConfig{Command: commandMCPConfig, ConfigName: "xcodecli"}
+	cfg := cliConfig{Command: commandMCPConfig, ConfigName: "xcodecli", MCPMode: "agent"}
 	help := false
 	fs.StringVar(&cfg.MCPClient, "client", "", "")
 	fs.StringVar(&cfg.ConfigName, "name", "xcodecli", "")
 	fs.StringVar(&cfg.Scope, "scope", "", "")
+	fs.StringVar(&cfg.MCPMode, "mode", "agent", "")
 	fs.BoolVar(&cfg.Write, "write", false, "")
 	fs.BoolVar(&cfg.JSONOutput, "json", false, "")
 	fs.StringVar(&cfg.XcodePID, "xcode-pid", "", "")
@@ -303,11 +316,17 @@ func parseMCPConfigFlags(name string, args []string) (cliConfig, error) {
 	cfg.MCPClient = strings.ToLower(strings.TrimSpace(cfg.MCPClient))
 	cfg.ConfigName = strings.TrimSpace(cfg.ConfigName)
 	cfg.Scope = strings.ToLower(strings.TrimSpace(cfg.Scope))
+	cfg.MCPMode = strings.ToLower(strings.TrimSpace(cfg.MCPMode))
 	if cfg.MCPClient == "" {
 		return cliConfig{}, errors.New("mcp config requires --client")
 	}
 	if cfg.ConfigName == "" {
 		return cliConfig{}, errors.New("--name must not be empty")
+	}
+	switch cfg.MCPMode {
+	case "agent", "bridge":
+	default:
+		return cliConfig{}, errors.New("--mode must be one of: agent, bridge")
 	}
 	switch cfg.MCPClient {
 	case "claude":
@@ -661,7 +680,8 @@ START HERE:
 
 RUNTIME MODEL:
   - "bridge" is raw passthrough to xcrun mcpbridge.
-  - "mcp config" prints or writes client-specific MCP registration commands for xcodecli bridge.
+  - "serve" is a stdio MCP server that reuses the LaunchAgent-backed pooled runtime.
+  - "mcp config" prints or writes client-specific MCP registration commands for xcodecli serve by default.
   - "tools" and "tool" use a per-user LaunchAgent, local Unix socket RPC, and pooled mcpbridge sessions.
   - The first tools request may install/bootstrap the LaunchAgent automatically.
   - "--timeout" controls the request timeout, including LaunchAgent startup and mcpbridge session initialization.
@@ -673,11 +693,12 @@ USAGE:
   xcodecli --version
   xcodecli [--xcode-pid PID] [--session-id UUID] [--debug]
   xcodecli bridge [--xcode-pid PID] [--session-id UUID] [--debug]
+  xcodecli serve [--xcode-pid PID] [--session-id UUID] [--debug]
   xcodecli doctor [--json] [--xcode-pid PID] [--session-id UUID]
-  xcodecli mcp config --client <claude|codex|gemini> [--name xcodecli] [--scope SCOPE] [--write] [--json] [--xcode-pid PID] [--session-id UUID]
-  xcodecli mcp codex [--name xcodecli] [--write] [--json] [--xcode-pid PID] [--session-id UUID]
-  xcodecli mcp claude [--name xcodecli] [--scope SCOPE] [--write] [--json] [--xcode-pid PID] [--session-id UUID]
-  xcodecli mcp gemini [--name xcodecli] [--scope SCOPE] [--write] [--json] [--xcode-pid PID] [--session-id UUID]
+  xcodecli mcp config --client <claude|codex|gemini> [--mode <agent|bridge>] [--name xcodecli] [--scope SCOPE] [--write] [--json] [--xcode-pid PID] [--session-id UUID]
+  xcodecli mcp codex [--mode <agent|bridge>] [--name xcodecli] [--write] [--json] [--xcode-pid PID] [--session-id UUID]
+  xcodecli mcp claude [--mode <agent|bridge>] [--name xcodecli] [--scope SCOPE] [--write] [--json] [--xcode-pid PID] [--session-id UUID]
+  xcodecli mcp gemini [--mode <agent|bridge>] [--name xcodecli] [--scope SCOPE] [--write] [--json] [--xcode-pid PID] [--session-id UUID]
   xcodecli tools list [--json] [--timeout 60s] [--xcode-pid PID] [--session-id UUID] [--debug]
   xcodecli tool inspect <name> [--json] [--timeout 60s] [--xcode-pid PID] [--session-id UUID] [--debug]
   xcodecli tool call <name> (--json '{...}' | --json @payload.json | --json-stdin) [--timeout DURATION] [--xcode-pid PID] [--session-id UUID] [--debug]
@@ -690,8 +711,9 @@ USAGE:
 COMMANDS:
   version   Print the current xcodecli version
   bridge    Run raw STDIO passthrough to xcrun mcpbridge
+  serve     Run a stdio MCP server backed by the LaunchAgent runtime
   doctor    Run environment diagnostics
-  mcp       Print or write MCP client configuration for xcodecli bridge
+  mcp       Print or write MCP client configuration for xcodecli serve or bridge
   tools     Convenience commands for listing tools
   tool      Convenience commands for inspecting or calling a tool
   agent     Inspect or manage the LaunchAgent used by tools commands
@@ -726,6 +748,25 @@ FLAGS:
 `
 }
 
+func serveUsage() string {
+	return `serve runs xcodecli itself as a stdio MCP server.
+Use this when an MCP client should talk to xcodecli directly while xcodecli reuses the LaunchAgent-backed pooled runtime.
+
+USAGE:
+  xcodecli serve [--xcode-pid PID] [--session-id UUID] [--debug]
+
+FLAGS:
+  --xcode-pid PID     Override MCP_XCODE_PID
+  --session-id UUID   Override MCP_XCODE_SESSION_ID
+  --debug             Emit server debug logs to stderr
+  -h, --help          Show help
+
+NOTES:
+  stdout is protocol-only. Human-readable logs and diagnostics go to stderr.
+  If no session ID is provided, xcodecli creates or reuses its persistent session ID at runtime.
+`
+}
+
 func doctorUsage() string {
 	return `doctor reports environment readiness for both humans and agents.
 Prefer --json when another tool or agent needs to parse the result.
@@ -743,13 +784,13 @@ FLAGS:
 
 func mcpUsage() string {
 	return `Use mcp config to generate or write client-specific MCP registration commands.
-This is the fastest way to point Claude Code, Codex, or Gemini at "xcodecli bridge".
+This is the fastest way to point Claude Code, Codex, or Gemini at xcodecli's LaunchAgent-backed MCP server.
 
 USAGE:
-  xcodecli mcp config --client <claude|codex|gemini> [--name xcodecli] [--scope SCOPE] [--write] [--json] [--xcode-pid PID] [--session-id UUID]
-  xcodecli mcp codex [--name xcodecli] [--write] [--json] [--xcode-pid PID] [--session-id UUID]
-  xcodecli mcp claude [--name xcodecli] [--scope SCOPE] [--write] [--json] [--xcode-pid PID] [--session-id UUID]
-  xcodecli mcp gemini [--name xcodecli] [--scope SCOPE] [--write] [--json] [--xcode-pid PID] [--session-id UUID]
+  xcodecli mcp config --client <claude|codex|gemini> [--mode <agent|bridge>] [--name xcodecli] [--scope SCOPE] [--write] [--json] [--xcode-pid PID] [--session-id UUID]
+  xcodecli mcp codex [--mode <agent|bridge>] [--name xcodecli] [--write] [--json] [--xcode-pid PID] [--session-id UUID]
+  xcodecli mcp claude [--mode <agent|bridge>] [--name xcodecli] [--scope SCOPE] [--write] [--json] [--xcode-pid PID] [--session-id UUID]
+  xcodecli mcp gemini [--mode <agent|bridge>] [--name xcodecli] [--scope SCOPE] [--write] [--json] [--xcode-pid PID] [--session-id UUID]
 
 SUBCOMMANDS:
   config    Print or write a client-specific MCP registration command
@@ -760,14 +801,15 @@ SUBCOMMANDS:
 }
 
 func mcpConfigUsage() string {
-	return `mcp config prints a ready-to-run MCP registration command for xcodecli bridge.
+	return `mcp config prints a ready-to-run MCP registration command for xcodecli serve by default.
 Use --write to execute that command through the target client CLI instead of only printing it.
 
 USAGE:
-  xcodecli mcp config --client <claude|codex|gemini> [--name xcodecli] [--scope SCOPE] [--write] [--json] [--xcode-pid PID] [--session-id UUID]
+  xcodecli mcp config --client <claude|codex|gemini> [--mode <agent|bridge>] [--name xcodecli] [--scope SCOPE] [--write] [--json] [--xcode-pid PID] [--session-id UUID]
 
 FLAGS:
   --client NAME        Target client preset: claude, codex, or gemini
+  --mode MODE          MCP server mode: agent (default, xcodecli serve) or bridge (raw passthrough)
   --name NAME          Registered MCP server name (default xcodecli)
   --scope SCOPE        Claude: local|user|project, Gemini: user|project, Codex: unsupported
   --write              Execute the generated registration command through the target CLI
@@ -778,6 +820,7 @@ FLAGS:
 
 NOTES:
   Output-only mode does not create or reuse xcodecli's persistent session file.
+  Agent mode writes config for "xcodecli serve"; bridge mode writes config for "xcodecli bridge".
   Claude/Codex/Gemini registration is delegated to each client's own CLI; xcodecli does not edit their config files directly.
 `
 }
@@ -786,30 +829,30 @@ func mcpClientUsage(client string) string {
 	switch client {
 	case "codex":
 		return `mcp codex is a shorthand alias for "xcodecli mcp config --client codex".
-Use it to print or write a ready-to-run MCP registration command for xcodecli bridge.
+Use it to print or write a ready-to-run MCP registration command for xcodecli serve by default.
 
 USAGE:
-  xcodecli mcp codex [--name xcodecli] [--write] [--json] [--xcode-pid PID] [--session-id UUID]
+  xcodecli mcp codex [--mode <agent|bridge>] [--name xcodecli] [--write] [--json] [--xcode-pid PID] [--session-id UUID]
 
 NOTES:
   Scope selection is not supported for Codex.
 `
 	case "claude":
 		return `mcp claude is a shorthand alias for "xcodecli mcp config --client claude".
-Use it to print or write a ready-to-run MCP registration command for xcodecli bridge.
+Use it to print or write a ready-to-run MCP registration command for xcodecli serve by default.
 
 USAGE:
-  xcodecli mcp claude [--name xcodecli] [--scope SCOPE] [--write] [--json] [--xcode-pid PID] [--session-id UUID]
+  xcodecli mcp claude [--mode <agent|bridge>] [--name xcodecli] [--scope SCOPE] [--write] [--json] [--xcode-pid PID] [--session-id UUID]
 
 NOTES:
   Claude defaults to --scope local.
 `
 	case "gemini":
 		return `mcp gemini is a shorthand alias for "xcodecli mcp config --client gemini".
-Use it to print or write a ready-to-run MCP registration command for xcodecli bridge.
+Use it to print or write a ready-to-run MCP registration command for xcodecli serve by default.
 
 USAGE:
-  xcodecli mcp gemini [--name xcodecli] [--scope SCOPE] [--write] [--json] [--xcode-pid PID] [--session-id UUID]
+  xcodecli mcp gemini [--mode <agent|bridge>] [--name xcodecli] [--scope SCOPE] [--write] [--json] [--xcode-pid PID] [--session-id UUID]
 
 NOTES:
   Gemini defaults to --scope user.
