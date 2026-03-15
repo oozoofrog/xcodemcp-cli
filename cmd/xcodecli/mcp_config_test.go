@@ -311,6 +311,78 @@ func TestRunMCPConfigWriteClaudeReplacesExistingServer(t *testing.T) {
 	})
 }
 
+func TestRunMCPConfigWriteClaudeRetriesWhenRemoveSaysNotFound(t *testing.T) {
+	withStubs(t, func() {
+		callCount := 0
+		defaultMCPCommandRunner = func(ctx context.Context, name string, args []string) (externalCommandResult, error) {
+			callCount++
+			switch callCount {
+			case 1:
+				return externalCommandResult{ExitCode: 1, Stderr: "MCP server xcodecli already exists in local config"}, nil
+			case 2:
+				return externalCommandResult{ExitCode: 1, Stderr: "No MCP server found with name xcodecli"}, nil
+			case 3:
+				return externalCommandResult{ExitCode: 0, Stdout: "Added stdio MCP server xcodecli to local config"}, nil
+			default:
+				t.Fatalf("unexpected call %d: %s %v", callCount, name, args)
+				return externalCommandResult{}, nil
+			}
+		}
+
+		var stdout strings.Builder
+		var stderr strings.Builder
+		code := run(context.Background(), []string{
+			"mcp", "config",
+			"--client", "claude",
+			"--write",
+			"--json",
+		}, strings.NewReader(""), &stdout, &stderr, os.Environ())
+		if code != 0 {
+			t.Fatalf("exit code = %d, want 0 (stderr=%q)", code, stderr.String())
+		}
+		if callCount != 3 {
+			t.Fatalf("callCount = %d, want 3", callCount)
+		}
+	})
+}
+
+func TestHelperFunctionsForMCPConfigFormatting(t *testing.T) {
+	if !claudeRemoveNotFound(externalCommandResult{ExitCode: 1, Stderr: "No MCP server found"}) {
+		t.Fatal("claudeRemoveNotFound = false, want true")
+	}
+
+	source := map[string]string{"A": "1"}
+	cloned := copyStringMap(source)
+	cloned["A"] = "2"
+	if source["A"] != "1" {
+		t.Fatalf("copyStringMap mutated source: %+v", source)
+	}
+
+	text := formatMCPConfigResult(mcpConfigResult{
+		Client: "codex",
+		Mode:   "agent",
+		Name:   "xcodecli",
+		Server: mcpConfigServerSpec{
+			Command: "/tmp/xcodecli",
+			Args:    []string{"serve"},
+			Env:     map[string]string{"MCP_XCODE_PID": "123"},
+		},
+		DisplayCommand: "codex mcp add xcodecli -- /tmp/xcodecli serve",
+		Write: mcpConfigWriteResult{
+			Requested: true,
+			Executed:  true,
+			ExitCode:  0,
+			Stdout:    "line one\nline two\n",
+			Stderr:    "err one\nerr two\n",
+		},
+	})
+	for _, want := range []string{"mode: agent", "write stdout:", "  line one", "  line two", "write stderr:", "  err one", "  err two"} {
+		if !strings.Contains(text, want) {
+			t.Fatalf("formatted output missing %q: %s", want, text)
+		}
+	}
+}
+
 func TestRunMCPConfigWriteMissingClientBinaryReturnsStructuredJSON(t *testing.T) {
 	withStubs(t, func() {
 		defaultMCPCommandRunner = func(ctx context.Context, name string, args []string) (externalCommandResult, error) {
