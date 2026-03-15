@@ -143,18 +143,62 @@ func TestCallToolTimeoutIncludesRequestTimeoutMessage(t *testing.T) {
 	launchd := &fakeLaunchd{harness: harness}
 	clientCfg := testClientConfig(paths, spawnFile, 5*time.Second, launchd)
 
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
 	defer cancel()
 	started := time.Now()
-	_, err := CallTool(ctx, clientCfg, Request{Timeout: 200 * time.Millisecond}, "BuildProject", map[string]any{"tabIdentifier": "demo"})
-	if err == nil || !strings.Contains(err.Error(), "request timed out after 200ms while calling BuildProject") {
+	_, err := CallTool(ctx, clientCfg, Request{Timeout: 500 * time.Millisecond}, "BuildProject", map[string]any{"tabIdentifier": "demo"})
+	if err == nil || !strings.Contains(err.Error(), "request timed out after 500ms while calling BuildProject") {
 		t.Fatalf("expected request timeout message, got %v", err)
 	}
 	if !strings.Contains(err.Error(), "not the mcpbridge session idle timeout") {
 		t.Fatalf("expected idle-timeout clarification, got %v", err)
 	}
+	if strings.Contains(err.Error(), "connecting to the LaunchAgent after startup") {
+		t.Fatalf("expected tool timeout labeling to be preserved after cold start, got %v", err)
+	}
 	if elapsed := time.Since(started); elapsed > time.Second {
 		t.Fatalf("call timeout took too long: %s", elapsed)
+	}
+}
+
+func TestWaitForReadyHonorsShortCallerDeadline(t *testing.T) {
+	started := time.Now()
+	cfg := Config{
+		Label:       LaunchAgentLabel,
+		Paths:       Paths{SocketPath: "/tmp/unused-agent.sock"},
+		DialContext: readyAfterDialer(started, time.Hour),
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
+	defer cancel()
+
+	begin := time.Now()
+	err := waitForReady(ctx, cfg)
+	if err == nil {
+		t.Fatal("expected waitForReady to time out")
+	}
+	if elapsed := time.Since(begin); elapsed > time.Second {
+		t.Fatalf("waitForReady short deadline took too long: %s", elapsed)
+	}
+}
+
+func TestWaitForReadyCanExceedFiveSecondsWhenCallerDeadlineAllows(t *testing.T) {
+	started := time.Now()
+	cfg := Config{
+		Label:       LaunchAgentLabel,
+		Paths:       Paths{SocketPath: "/tmp/unused-agent.sock"},
+		DialContext: readyAfterDialer(started, 5200*time.Millisecond),
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 7*time.Second)
+	defer cancel()
+
+	begin := time.Now()
+	if err := waitForReady(ctx, cfg); err != nil {
+		t.Fatalf("waitForReady returned error: %v", err)
+	}
+	if elapsed := time.Since(begin); elapsed < 5*time.Second {
+		t.Fatalf("waitForReady returned too early: %s", elapsed)
 	}
 }
 
@@ -230,6 +274,22 @@ func newShortPaths(t *testing.T) (string, Paths) {
 		PIDPath:    filepath.Join(tempDir, "a.pid"),
 		LogPath:    filepath.Join(tempDir, "a.log"),
 		PlistPath:  filepath.Join(tempDir, "a.plist"),
+	}
+}
+
+func readyAfterDialer(start time.Time, readyAfter time.Duration) func(ctx context.Context, network, address string) (net.Conn, error) {
+	return func(ctx context.Context, network, address string) (net.Conn, error) {
+		if time.Since(start) < readyAfter {
+			return nil, fmt.Errorf("agent socket not ready yet")
+		}
+
+		client, server := net.Pipe()
+		go func() {
+			defer server.Close()
+			_, _ = bufio.NewReader(server).ReadBytes('\n')
+			_, _ = server.Write([]byte(`{"status":{"pid":1,"idleTimeoutMs":86400000,"backendSessions":1}}` + "\n"))
+		}()
+		return client, nil
 	}
 }
 

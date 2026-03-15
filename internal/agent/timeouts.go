@@ -31,3 +31,17 @@ func formatTimeoutMillis(timeoutMS int64) string {
 func requestTimeoutError(timeoutMS int64, action string, cause error) error {
 	return fmt.Errorf("request timed out after %s while %s: %w (this was the request timeout, not the mcpbridge session idle timeout)", formatTimeoutMillis(timeoutMS), action, cause)
 }
+
+func requestTimeoutAction(method, toolName string) string {
+	switch method {
+	case "tools/list":
+		return "listing tools"
+	case "tools/call":
+		if toolName != "" {
+			return fmt.Sprintf("calling %s", toolName)
+		}
+		return "calling a tool"
+	default:
+		return "waiting for request completion"
+	}
+}

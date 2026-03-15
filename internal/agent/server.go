@@ -180,7 +180,7 @@ func (s *server) listTools(req rpcRequest) ([]map[string]any, error) {
 		return res.tools, nil
 	case <-ctx.Done():
 		s.discardClient(pooled)
-		return nil, requestTimeoutError(req.TimeoutMS, "listing tools", ctx.Err())
+		return nil, requestTimeoutError(req.TimeoutMS, requestTimeoutAction(req.Method, req.ToolName), ctx.Err())
 	}
 }
 
@@ -218,11 +218,7 @@ func (s *server) callTool(req rpcRequest) (mcp.CallResult, error) {
 		return res.callResult, nil
 	case <-ctx.Done():
 		s.discardClient(pooled)
-		action := "calling a tool"
-		if req.ToolName != "" {
-			action = fmt.Sprintf("calling %s", req.ToolName)
-		}
-		return mcp.CallResult{}, requestTimeoutError(req.TimeoutMS, action, ctx.Err())
+		return mcp.CallResult{}, requestTimeoutError(req.TimeoutMS, requestTimeoutAction(req.Method, req.ToolName), ctx.Err())
 	}
 }
 
