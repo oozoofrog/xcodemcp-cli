@@ -135,21 +135,21 @@ List tools through the MCP bridge:
 
 ```bash
 ./xcodecli tools list
-./xcodecli tools list --json --timeout 30s
+./xcodecli tools list --json --timeout 60s
 ```
 
 Inspect a single tool before calling it:
 
 ```bash
 ./xcodecli tool inspect XcodeListWindows
-./xcodecli tool inspect XcodeListWindows --json
+./xcodecli tool inspect XcodeListWindows --json --timeout 60s
 ```
 
 Call a single tool with JSON arguments:
 
 ```bash
 ./xcodecli tool call XcodeListWindows --json '{}'
-./xcodecli tool call BuildProject --json @/tmp/payload.json
+./xcodecli tool call BuildProject --timeout 30m --json @/tmp/payload.json
 printf '{}' | ./xcodecli tool call XcodeListWindows --json-stdin
 ```
 
@@ -226,5 +226,8 @@ The project continues to use pre-1.0 semantic versioning tags with the following
 - If no `--session-id` flag or `MCP_XCODE_SESSION_ID` environment variable is provided, `xcodecli` automatically creates and reuses a persistent session ID at `~/Library/Application Support/xcodecli/session-id`.
 - In bridge mode, **stdout is protocol-only**. Wrapper logs and diagnostics go to stderr.
 - Convenience commands (`tools list`, `tool inspect`, `tool call`) automatically install and bootstrap a per-user LaunchAgent at `~/Library/LaunchAgents/io.oozoofrog.xcodecli.plist`.
-- The LaunchAgent talks to `xcrun mcpbridge` over a long-lived local Unix socket and shuts itself down after `10m` of idleness by default.
+- `--timeout` is the **request timeout**. It includes first-use LaunchAgent startup, `mcpbridge` session initialization, and any auth prompts.
+- The default **mcpbridge session idle timeout** is `24h`. It controls how long pooled `mcpbridge` sessions stay alive while idle.
+- Active requests are **not** interrupted by the `mcpbridge session idle timeout`.
+- Default request timeouts are `60s` for `tools list`, `tool inspect`, `agent guide`, and `agent demo`; `tool call` uses tool-specific defaults (`60s` read/search/log, `120s` update/write/refresh, `30m` build/test, `5m` fallback).
 - `tool call` accepts exactly one payload source: inline `--json`, `--json @file`, or `--json-stdin`.

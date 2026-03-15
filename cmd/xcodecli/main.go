@@ -397,7 +397,7 @@ func formatAgentStatus(status agent.Status) string {
 	if status.SocketReachable {
 		socketText = "yes"
 	}
-	return fmt.Sprintf("xcodecli agent\n\nlabel: %s\nplist installed: %t\nplist path: %s\nregistered binary: %s\ncurrent binary: %s\nbinary matches: %s\nsocket path: %s\nsocket reachable: %s\nrunning: %s\npid: %d\nidle timeout: %s\nbackend sessions: %d\n",
+	return fmt.Sprintf("xcodecli agent\n\nlabel: %s\nplist installed: %t\nplist path: %s\nregistered binary: %s\ncurrent binary: %s\nbinary matches: %s\nsocket path: %s\nsocket reachable: %s\nrunning: %s\npid: %d\nmcpbridge session idle timeout: %s\nbackend sessions: %d\n",
 		status.Label,
 		status.PlistInstalled,
 		status.PlistPath,
@@ -408,7 +408,7 @@ func formatAgentStatus(status agent.Status) string {
 		socketText,
 		runningText,
 		status.PID,
-		status.IdleTimeout,
+		formatTimeoutDuration(status.IdleTimeout),
 		status.BackendSessions,
 	)
 }

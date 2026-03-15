@@ -345,13 +345,13 @@ func parseMCPAliasFlags(name string, client string, args []string) (cliConfig, e
 
 func parseToolsListFlags(name string, args []string) (cliConfig, error) {
 	fs := newFlagSet(name)
-	cfg := cliConfig{Command: commandToolsList, Timeout: 30 * time.Second}
+	cfg := cliConfig{Command: commandToolsList, Timeout: defaultToolsListRequestTimeout}
 	help := false
 	fs.StringVar(&cfg.XcodePID, "xcode-pid", "", "")
 	fs.StringVar(&cfg.SessionID, "session-id", "", "")
 	fs.BoolVar(&cfg.Debug, "debug", false, "")
 	fs.BoolVar(&cfg.JSONOutput, "json", false, "")
-	fs.DurationVar(&cfg.Timeout, "timeout", 30*time.Second, "")
+	fs.DurationVar(&cfg.Timeout, "timeout", defaultToolsListRequestTimeout, "")
 	fs.BoolVar(&help, "h", false, "")
 	fs.BoolVar(&help, "help", false, "")
 	if err := fs.Parse(args); err != nil {
@@ -379,13 +379,13 @@ func parseToolCallFlags(name string, args []string) (cliConfig, error) {
 	}
 
 	fs := newFlagSet(name)
-	cfg := cliConfig{Command: commandToolCall, Timeout: 30 * time.Second, ToolName: toolName}
+	cfg := cliConfig{Command: commandToolCall, Timeout: defaultToolCallTimeout(toolName), ToolName: toolName}
 	fs.StringVar(&cfg.XcodePID, "xcode-pid", "", "")
 	fs.StringVar(&cfg.SessionID, "session-id", "", "")
 	fs.BoolVar(&cfg.Debug, "debug", false, "")
 	fs.StringVar(&cfg.ToolInputJSON, "json", "", "")
 	fs.BoolVar(&cfg.ToolInputFromStdin, "json-stdin", false, "")
-	fs.DurationVar(&cfg.Timeout, "timeout", 30*time.Second, "")
+	fs.DurationVar(&cfg.Timeout, "timeout", cfg.Timeout, "")
 	if err := fs.Parse(flagArgs); err != nil {
 		return cliConfig{}, err
 	}
@@ -414,13 +414,17 @@ func parseToolInspectFlags(name string, args []string) (cliConfig, error) {
 	}
 
 	fs := newFlagSet(name)
-	cfg := cliConfig{Command: commandToolInspect, Timeout: 30 * time.Second, ToolName: toolName}
+	cfg := cliConfig{Command: commandToolInspect, Timeout: defaultToolInspectRequestTimeout, ToolName: toolName}
 	fs.StringVar(&cfg.XcodePID, "xcode-pid", "", "")
 	fs.StringVar(&cfg.SessionID, "session-id", "", "")
 	fs.BoolVar(&cfg.Debug, "debug", false, "")
 	fs.BoolVar(&cfg.JSONOutput, "json", false, "")
+	fs.DurationVar(&cfg.Timeout, "timeout", defaultToolInspectRequestTimeout, "")
 	if err := fs.Parse(flagArgs); err != nil {
 		return cliConfig{}, err
+	}
+	if cfg.Timeout <= 0 {
+		return cliConfig{}, errors.New("--timeout must be greater than 0")
 	}
 	if fs.NArg() != 0 {
 		return cliConfig{}, fmt.Errorf("unexpected positional arguments: %s", strings.Join(fs.Args(), " "))
@@ -457,12 +461,12 @@ func parseAgentGuideFlags(name string, args []string) (cliConfig, error) {
 	}
 
 	fs := newFlagSet(name)
-	cfg := cliConfig{Command: commandAgentGuide, Timeout: 30 * time.Second, Intent: intent}
+	cfg := cliConfig{Command: commandAgentGuide, Timeout: defaultAgentGuideRequestTimeout, Intent: intent}
 	fs.StringVar(&cfg.XcodePID, "xcode-pid", "", "")
 	fs.StringVar(&cfg.SessionID, "session-id", "", "")
 	fs.BoolVar(&cfg.Debug, "debug", false, "")
 	fs.BoolVar(&cfg.JSONOutput, "json", false, "")
-	fs.DurationVar(&cfg.Timeout, "timeout", 30*time.Second, "")
+	fs.DurationVar(&cfg.Timeout, "timeout", defaultAgentGuideRequestTimeout, "")
 	if err := fs.Parse(flagArgs); err != nil {
 		return cliConfig{}, err
 	}
@@ -477,13 +481,13 @@ func parseAgentGuideFlags(name string, args []string) (cliConfig, error) {
 
 func parseAgentDemoFlags(name string, args []string) (cliConfig, error) {
 	fs := newFlagSet(name)
-	cfg := cliConfig{Command: commandAgentDemo, Timeout: 30 * time.Second}
+	cfg := cliConfig{Command: commandAgentDemo, Timeout: defaultAgentDemoRequestTimeout}
 	help := false
 	fs.StringVar(&cfg.XcodePID, "xcode-pid", "", "")
 	fs.StringVar(&cfg.SessionID, "session-id", "", "")
 	fs.BoolVar(&cfg.Debug, "debug", false, "")
 	fs.BoolVar(&cfg.JSONOutput, "json", false, "")
-	fs.DurationVar(&cfg.Timeout, "timeout", 30*time.Second, "")
+	fs.DurationVar(&cfg.Timeout, "timeout", defaultAgentDemoRequestTimeout, "")
 	fs.BoolVar(&help, "h", false, "")
 	fs.BoolVar(&help, "help", false, "")
 	if err := fs.Parse(args); err != nil {
@@ -658,8 +662,10 @@ START HERE:
 RUNTIME MODEL:
   - "bridge" is raw passthrough to xcrun mcpbridge.
   - "mcp config" prints or writes client-specific MCP registration commands for xcodecli bridge.
-  - "tools" and "tool" use a per-user LaunchAgent and local Unix socket RPC.
+  - "tools" and "tool" use a per-user LaunchAgent, local Unix socket RPC, and pooled mcpbridge sessions.
   - The first tools request may install/bootstrap the LaunchAgent automatically.
+  - "--timeout" controls the request timeout, including LaunchAgent startup and mcpbridge session initialization.
+  - The mcpbridge session idle timeout controls how long pooled sessions stay alive while idle; active requests are not interrupted.
   - Xcode should be running, with at least one workspace/project window open.
 
 USAGE:
@@ -672,11 +678,11 @@ USAGE:
   xcodecli mcp codex [--name xcodecli] [--write] [--json] [--xcode-pid PID] [--session-id UUID]
   xcodecli mcp claude [--name xcodecli] [--scope SCOPE] [--write] [--json] [--xcode-pid PID] [--session-id UUID]
   xcodecli mcp gemini [--name xcodecli] [--scope SCOPE] [--write] [--json] [--xcode-pid PID] [--session-id UUID]
-  xcodecli tools list [--json] [--timeout 30s] [--xcode-pid PID] [--session-id UUID] [--debug]
-  xcodecli tool inspect <name> [--json] [--xcode-pid PID] [--session-id UUID] [--debug]
-  xcodecli tool call <name> (--json '{...}' | --json @payload.json | --json-stdin) [--timeout 30s] [--xcode-pid PID] [--session-id UUID] [--debug]
-  xcodecli agent guide [<intent>] [--json] [--timeout 30s] [--xcode-pid PID] [--session-id UUID] [--debug]
-  xcodecli agent demo [--json] [--timeout 30s] [--xcode-pid PID] [--session-id UUID] [--debug]
+  xcodecli tools list [--json] [--timeout 60s] [--xcode-pid PID] [--session-id UUID] [--debug]
+  xcodecli tool inspect <name> [--json] [--timeout 60s] [--xcode-pid PID] [--session-id UUID] [--debug]
+  xcodecli tool call <name> (--json '{...}' | --json @payload.json | --json-stdin) [--timeout DURATION] [--xcode-pid PID] [--session-id UUID] [--debug]
+  xcodecli agent guide [<intent>] [--json] [--timeout 60s] [--xcode-pid PID] [--session-id UUID] [--debug]
+  xcodecli agent demo [--json] [--timeout 60s] [--xcode-pid PID] [--session-id UUID] [--debug]
   xcodecli agent status [--json]
   xcodecli agent stop
   xcodecli agent uninstall
@@ -818,7 +824,7 @@ func toolsUsage() string {
 Inspect a tool before calling it if you need its schema or description.
 
 USAGE:
-  xcodecli tools list [--json] [--timeout 30s] [--xcode-pid PID] [--session-id UUID] [--debug]
+  xcodecli tools list [--json] [--timeout 60s] [--xcode-pid PID] [--session-id UUID] [--debug]
 
 SUBCOMMANDS:
   list      List MCP tools exposed through xcrun mcpbridge via the LaunchAgent
@@ -830,11 +836,11 @@ func toolsListUsage() string {
 This is the primary entrypoint for both humans and agents to learn what is available.
 
 USAGE:
-  xcodecli tools list [--json] [--timeout 30s] [--xcode-pid PID] [--session-id UUID] [--debug]
+  xcodecli tools list [--json] [--timeout 60s] [--xcode-pid PID] [--session-id UUID] [--debug]
 
 FLAGS:
   --json               Print the flattened tools array as pretty JSON
-  --timeout DURATION   Fail if the MCP request does not finish in time (default 30s)
+  --timeout DURATION   Override the request timeout (default 60s)
   --xcode-pid PID      Override MCP_XCODE_PID
   --session-id UUID    Override MCP_XCODE_SESSION_ID
   --debug              Emit convenience-command debug logs to stderr
@@ -842,6 +848,8 @@ FLAGS:
 
 NOTES:
   The first tools request may automatically install and bootstrap a per-user LaunchAgent.
+  The request timeout includes LaunchAgent startup, mcpbridge session initialization, and auth prompts.
+  Active requests are not interrupted by the mcpbridge session idle timeout.
 `
 }
 
@@ -850,8 +858,8 @@ func toolUsage() string {
 Agents should usually inspect before calling unless they already cached the schema.
 
 USAGE:
-  xcodecli tool inspect <name> [--json] [--xcode-pid PID] [--session-id UUID] [--debug]
-  xcodecli tool call <name> (--json '{...}' | --json @payload.json | --json-stdin) [--timeout 30s] [--xcode-pid PID] [--session-id UUID] [--debug]
+  xcodecli tool inspect <name> [--json] [--timeout 60s] [--xcode-pid PID] [--session-id UUID] [--debug]
+  xcodecli tool call <name> (--json '{...}' | --json @payload.json | --json-stdin) [--timeout DURATION] [--xcode-pid PID] [--session-id UUID] [--debug]
 
 SUBCOMMANDS:
   inspect   Show tool description and input schema
@@ -864,14 +872,19 @@ func toolInspectUsage() string {
 Use --json for machine-readable metadata or plain text for quick inspection.
 
 USAGE:
-  xcodecli tool inspect <name> [--json] [--xcode-pid PID] [--session-id UUID] [--debug]
+  xcodecli tool inspect <name> [--json] [--timeout 60s] [--xcode-pid PID] [--session-id UUID] [--debug]
 
 FLAGS:
   --json               Print the raw tool object as pretty JSON
+  --timeout DURATION   Override the request timeout (default 60s)
   --xcode-pid PID      Override MCP_XCODE_PID
   --session-id UUID    Override MCP_XCODE_SESSION_ID
   --debug              Emit convenience-command debug logs to stderr
   -h, --help           Show help
+
+NOTES:
+  The request timeout includes LaunchAgent startup, mcpbridge session initialization, and auth prompts.
+  Active requests are not interrupted by the mcpbridge session idle timeout.
 `
 }
 
@@ -880,12 +893,12 @@ func toolCallUsage() string {
 For large payloads prefer --json @file or --json-stdin instead of a long inline string.
 
 USAGE:
-  xcodecli tool call <name> (--json '{...}' | --json @payload.json | --json-stdin) [--timeout 30s] [--xcode-pid PID] [--session-id UUID] [--debug]
+  xcodecli tool call <name> (--json '{...}' | --json @payload.json | --json-stdin) [--timeout DURATION] [--xcode-pid PID] [--session-id UUID] [--debug]
 
 FLAGS:
   --json PAYLOAD       JSON object passed as tools/call arguments, or @path to load a JSON file
   --json-stdin         Read the JSON object payload from stdin
-  --timeout DURATION   Fail if the MCP request does not finish in time (default 30s)
+  --timeout DURATION   Override the request timeout. Defaults: 60s for read/search/log tools, 120s for update/write/refresh tools, 30m for BuildProject/RunAllTests/RunSomeTests, and 5m for other tools.
   --xcode-pid PID      Override MCP_XCODE_PID
   --session-id UUID    Override MCP_XCODE_SESSION_ID
   --debug              Emit convenience-command debug logs to stderr
@@ -893,6 +906,8 @@ FLAGS:
 
 NOTES:
   The first tools request may automatically install and bootstrap a per-user LaunchAgent.
+  The request timeout includes LaunchAgent startup, mcpbridge session initialization, and auth prompts.
+  Active requests are not interrupted by the mcpbridge session idle timeout.
 `
 }
 
@@ -901,8 +916,8 @@ func agentUsage() string {
 Use guide to learn the right workflow for a request, demo for a safe read-only onboarding flow, status for diagnostics, stop to end the running process, and uninstall to remove local LaunchAgent state.
 
 USAGE:
-  xcodecli agent guide [<intent>] [--json] [--timeout 30s] [--xcode-pid PID] [--session-id UUID] [--debug]
-  xcodecli agent demo [--json] [--timeout 30s] [--xcode-pid PID] [--session-id UUID] [--debug]
+  xcodecli agent guide [<intent>] [--json] [--timeout 60s] [--xcode-pid PID] [--session-id UUID] [--debug]
+  xcodecli agent demo [--json] [--timeout 60s] [--xcode-pid PID] [--session-id UUID] [--debug]
   xcodecli agent status [--json]
   xcodecli agent stop
   xcodecli agent uninstall
@@ -921,11 +936,11 @@ func agentGuideUsage() string {
 It gathers lightweight live context, matches your intent to a workflow family, and prints exact next commands.
 
 USAGE:
-  xcodecli agent guide [<intent>] [--json] [--timeout 30s] [--xcode-pid PID] [--session-id UUID] [--debug]
+  xcodecli agent guide [<intent>] [--json] [--timeout 60s] [--xcode-pid PID] [--session-id UUID] [--debug]
 
 FLAGS:
   --json               Print the full guide report as pretty JSON
-  --timeout DURATION   Fail live discovery steps if they do not finish in time (default 30s)
+  --timeout DURATION   Override the request timeout for live discovery steps (default 60s)
   --xcode-pid PID      Override MCP_XCODE_PID
   --session-id UUID    Override MCP_XCODE_SESSION_ID
   --debug              Emit convenience-command debug logs to stderr
@@ -933,6 +948,8 @@ FLAGS:
 
 NOTES:
   This command is read-only. It may run doctor, tools list, agent status, and XcodeListWindows for context.
+  The request timeout includes LaunchAgent startup, mcpbridge session initialization, and auth prompts.
+  Active requests are not interrupted by the mcpbridge session idle timeout.
 `
 }
 
@@ -941,11 +958,11 @@ func agentDemoUsage() string {
 It reuses doctor output, discovers the live MCP tool catalog, and safely calls XcodeListWindows.
 
 USAGE:
-  xcodecli agent demo [--json] [--timeout 30s] [--xcode-pid PID] [--session-id UUID] [--debug]
+  xcodecli agent demo [--json] [--timeout 60s] [--xcode-pid PID] [--session-id UUID] [--debug]
 
 FLAGS:
   --json               Print the full demo report as pretty JSON
-  --timeout DURATION   Fail MCP discovery/call steps if they do not finish in time (default 30s)
+  --timeout DURATION   Override the request timeout for MCP discovery/call steps (default 60s)
   --xcode-pid PID      Override MCP_XCODE_PID
   --session-id UUID    Override MCP_XCODE_SESSION_ID
   --debug              Emit convenience-command debug logs to stderr
@@ -953,11 +970,13 @@ FLAGS:
 
 NOTES:
   This command is non-mutating. It only runs doctor, tools list, agent status, and XcodeListWindows.
+  The request timeout includes LaunchAgent startup, mcpbridge session initialization, and auth prompts.
+  Active requests are not interrupted by the mcpbridge session idle timeout.
 `
 }
 
 func agentStatusUsage() string {
-	return `agent status reports LaunchAgent installation, socket reachability, and backend session state.
+	return `agent status reports LaunchAgent installation, socket reachability, pooled backend session state, and the configured mcpbridge session idle timeout.
 Prefer --json when another agent or script needs to consume the result.
 
 USAGE:
@@ -987,11 +1006,11 @@ func agentRunUsage() string {
 Most users and agents should not call it directly.
 
 USAGE:
-  xcodecli agent run --launch-agent [--idle-timeout 10m] [--debug]
+  xcodecli agent run --launch-agent [--idle-timeout 24h] [--debug]
 
 FLAGS:
   --launch-agent       Required internal flag used by the LaunchAgent plist
-  --idle-timeout       Shut down after this much idle time (default 10m)
+  --idle-timeout       Shut down after this much pooled mcpbridge session idle time (default 24h)
   --debug              Emit agent runtime debug logs to stderr/log file
   -h, --help           Show help
 `

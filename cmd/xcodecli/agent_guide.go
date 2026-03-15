@@ -1232,7 +1232,7 @@ func guideSearchPattern(subject string) string {
 }
 
 func formatBuildProjectCommand(tabIdentifier string) string {
-	return fmt.Sprintf(`xcodecli tool call BuildProject --timeout 300s --json '{"tabIdentifier":%s}'`, jsonQuote(tabIdentifier))
+	return fmt.Sprintf(`xcodecli tool call BuildProject --timeout 30m --json '{"tabIdentifier":%s}'`, jsonQuote(tabIdentifier))
 }
 
 func formatGetBuildLogCommand(tabIdentifier, severity string) string {
@@ -1240,7 +1240,7 @@ func formatGetBuildLogCommand(tabIdentifier, severity string) string {
 }
 
 func formatRunAllTestsCommand(tabIdentifier string) string {
-	return fmt.Sprintf(`xcodecli tool call RunAllTests --timeout 300s --json '{"tabIdentifier":%s}'`, jsonQuote(tabIdentifier))
+	return fmt.Sprintf(`xcodecli tool call RunAllTests --timeout 30m --json '{"tabIdentifier":%s}'`, jsonQuote(tabIdentifier))
 }
 
 func formatGetTestListCommand(tabIdentifier string) string {
@@ -1248,7 +1248,7 @@ func formatGetTestListCommand(tabIdentifier string) string {
 }
 
 func formatRunSomeTestsTemplate(tabIdentifier string) string {
-	return fmt.Sprintf(`xcodecli tool call RunSomeTests --timeout 300s --json '{"tabIdentifier":%s,"tests":[{"targetName":"<targetName>","testIdentifier":"<identifier>"}]}'`, jsonQuote(tabIdentifier))
+	return fmt.Sprintf(`xcodecli tool call RunSomeTests --timeout 30m --json '{"tabIdentifier":%s,"tests":[{"targetName":"<targetName>","testIdentifier":"<identifier>"}]}'`, jsonQuote(tabIdentifier))
 }
 
 func formatXcodeLSCommand(tabIdentifier, path string) string {
@@ -1268,15 +1268,15 @@ func formatXcodeGrepCommand(tabIdentifier, pattern string) string {
 }
 
 func formatXcodeUpdateTemplate(tabIdentifier, filePath string) string {
-	return fmt.Sprintf(`xcodecli tool call XcodeUpdate --timeout 60s --json '{"tabIdentifier":%s,"filePath":%s,"oldString":"<exact text to replace>","newString":"<replacement text>"}'`, jsonQuote(tabIdentifier), jsonQuote(filePath))
+	return fmt.Sprintf(`xcodecli tool call XcodeUpdate --timeout 120s --json '{"tabIdentifier":%s,"filePath":%s,"oldString":"<exact text to replace>","newString":"<replacement text>"}'`, jsonQuote(tabIdentifier), jsonQuote(filePath))
 }
 
 func formatRefreshIssuesCommand(tabIdentifier, filePath string) string {
-	return fmt.Sprintf(`xcodecli tool call XcodeRefreshCodeIssuesInFile --timeout 60s --json '{"tabIdentifier":%s,"filePath":%s}'`, jsonQuote(tabIdentifier), jsonQuote(filePath))
+	return fmt.Sprintf(`xcodecli tool call XcodeRefreshCodeIssuesInFile --timeout 120s --json '{"tabIdentifier":%s,"filePath":%s}'`, jsonQuote(tabIdentifier), jsonQuote(filePath))
 }
 
 func formatXcodeWriteTemplate(tabIdentifier, filePath string) string {
-	return fmt.Sprintf(`xcodecli tool call XcodeWrite --timeout 60s --json '{"tabIdentifier":%s,"filePath":%s,"content":"<full file contents>"}'`, jsonQuote(tabIdentifier), jsonQuote(filePath))
+	return fmt.Sprintf(`xcodecli tool call XcodeWrite --timeout 120s --json '{"tabIdentifier":%s,"filePath":%s,"content":"<full file contents>"}'`, jsonQuote(tabIdentifier), jsonQuote(filePath))
 }
 
 func formatMaybeWindowsCommand(windowMatch guideWindowMatch) string {

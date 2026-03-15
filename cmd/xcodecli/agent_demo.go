@@ -226,9 +226,9 @@ func requiredArgsFromTool(tool map[string]any) []string {
 
 func agentDemoNextCommands() []string {
 	return []string{
-		`xcodecli tool inspect XcodeRead --json`,
-		`xcodecli tool call XcodeLS --json '{"tabIdentifier":"<tabIdentifier from above>","path":""}'`,
-		`xcodecli tool call XcodeRead --json '{"tabIdentifier":"<tabIdentifier from above>","filePath":"<path from XcodeLS>"}'`,
+		`xcodecli tool inspect XcodeRead --json --timeout 60s`,
+		`xcodecli tool call XcodeLS --timeout 60s --json '{"tabIdentifier":"<tabIdentifier from above>","path":""}'`,
+		`xcodecli tool call XcodeRead --timeout 60s --json '{"tabIdentifier":"<tabIdentifier from above>","filePath":"<path from XcodeLS>"}'`,
 	}
 }
 

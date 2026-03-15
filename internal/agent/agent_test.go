@@ -84,6 +84,12 @@ func TestLaunchAgentStopsAfterIdleTimeout(t *testing.T) {
 	}
 }
 
+func TestDefaultIdleTimeoutIs24Hours(t *testing.T) {
+	if DefaultIdleTimeout != 24*time.Hour {
+		t.Fatalf("DefaultIdleTimeout = %s, want 24h", DefaultIdleTimeout)
+	}
+}
+
 func TestListToolsAutostartHonorsCallerTimeout(t *testing.T) {
 	_, paths := newShortPaths(t)
 	clientCfg := Config{
@@ -120,11 +126,35 @@ func TestListToolsBackendInitializationHonorsRequestTimeout(t *testing.T) {
 	defer cancel()
 	started := time.Now()
 	_, err := ListTools(ctx, clientCfg, Request{Timeout: 200 * time.Millisecond})
-	if err == nil || (!strings.Contains(err.Error(), "timed out") && !strings.Contains(err.Error(), "context deadline exceeded")) {
+	if err == nil || (!strings.Contains(err.Error(), "request timed out after 200ms") && !strings.Contains(err.Error(), "context deadline exceeded")) {
 		t.Fatalf("expected backend initialization timeout, got %v", err)
 	}
 	if elapsed := time.Since(started); elapsed > time.Second {
 		t.Fatalf("backend initialization timeout took too long: %s", elapsed)
+	}
+}
+
+func TestCallToolTimeoutIncludesRequestTimeoutMessage(t *testing.T) {
+	tempDir, paths := newShortPaths(t)
+	spawnFile := filepath.Join(tempDir, "spawn.log")
+	serverCfg := testServerConfig(t, paths, spawnFile, 5*time.Second)
+	serverCfg.Command = helperCommand("timeout-call")
+	harness := newServerHarness(t, serverCfg)
+	launchd := &fakeLaunchd{harness: harness}
+	clientCfg := testClientConfig(paths, spawnFile, 5*time.Second, launchd)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	started := time.Now()
+	_, err := CallTool(ctx, clientCfg, Request{Timeout: 200 * time.Millisecond}, "BuildProject", map[string]any{"tabIdentifier": "demo"})
+	if err == nil || !strings.Contains(err.Error(), "request timed out after 200ms while calling BuildProject") {
+		t.Fatalf("expected request timeout message, got %v", err)
+	}
+	if !strings.Contains(err.Error(), "not the mcpbridge session idle timeout") {
+		t.Fatalf("expected idle-timeout clarification, got %v", err)
+	}
+	if elapsed := time.Since(started); elapsed > time.Second {
+		t.Fatalf("call timeout took too long: %s", elapsed)
 	}
 }
 
@@ -403,6 +433,11 @@ func TestAgentHelperProcess(t *testing.T) {
 			writeHelperResponse(t, map[string]any{"jsonrpc": "2.0", "id": id, "result": map[string]any{"tools": []map[string]any{{"name": "list_windows", "description": "List Xcode windows"}}}})
 		case "tools/call":
 			params, _ := req["params"].(map[string]any)
+			switch helperMode(t) {
+			case "timeout-call":
+				time.Sleep(2 * time.Second)
+				continue
+			}
 			writeHelperResponse(t, map[string]any{"jsonrpc": "2.0", "id": id, "result": map[string]any{"content": []map[string]any{{"type": "text", "text": "ok"}}, "echoName": params["name"]}})
 		default:
 			t.Fatalf("unexpected helper method %q", method)

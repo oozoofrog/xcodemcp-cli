@@ -94,6 +94,16 @@ func TestParseCLIToolsList(t *testing.T) {
 	}
 }
 
+func TestParseCLIToolsListDefaultTimeout(t *testing.T) {
+	cfg, _, err := parseCLI([]string{"tools", "list", "--json"})
+	if err != nil {
+		t.Fatalf("parseCLI returned error: %v", err)
+	}
+	if cfg.Timeout != defaultToolsListRequestTimeout {
+		t.Fatalf("timeout = %s, want %s", cfg.Timeout, defaultToolsListRequestTimeout)
+	}
+}
+
 func TestParseCLIToolInspect(t *testing.T) {
 	cfg, _, err := parseCLI([]string{"tool", "inspect", "BuildProject", "--json", "--xcode-pid", "123"})
 	if err != nil {
@@ -102,8 +112,18 @@ func TestParseCLIToolInspect(t *testing.T) {
 	if cfg.Command != commandToolInspect {
 		t.Fatalf("command = %q, want %q", cfg.Command, commandToolInspect)
 	}
-	if cfg.ToolName != "BuildProject" || !cfg.JSONOutput || cfg.XcodePID != "123" {
+	if cfg.ToolName != "BuildProject" || !cfg.JSONOutput || cfg.XcodePID != "123" || cfg.Timeout != defaultToolInspectRequestTimeout {
 		t.Fatalf("unexpected tool inspect config: %+v", cfg)
+	}
+}
+
+func TestParseCLIToolInspectCustomTimeout(t *testing.T) {
+	cfg, _, err := parseCLI([]string{"tool", "inspect", "BuildProject", "--timeout", "75s"})
+	if err != nil {
+		t.Fatalf("parseCLI returned error: %v", err)
+	}
+	if cfg.Timeout != 75*time.Second {
+		t.Fatalf("timeout = %s, want 75s", cfg.Timeout)
 	}
 }
 
@@ -117,6 +137,27 @@ func TestParseCLIToolCallInlineJSON(t *testing.T) {
 	}
 	if cfg.ToolName != "build_sim" || cfg.ToolInputJSON != `{"scheme":"Demo"}` || cfg.Timeout != 15*time.Second {
 		t.Fatalf("unexpected tool call config: %+v", cfg)
+	}
+}
+
+func TestParseCLIToolCallDefaultTimeoutsByTool(t *testing.T) {
+	cases := []struct {
+		args []string
+		want time.Duration
+	}{
+		{[]string{"tool", "call", "BuildProject", "--json", "{}"}, defaultToolCallLongRequestTimeout},
+		{[]string{"tool", "call", "XcodeRead", "--json", "{}"}, defaultToolCallReadRequestTimeout},
+		{[]string{"tool", "call", "XcodeWrite", "--json", "{}"}, defaultToolCallWriteRequestTimeout},
+		{[]string{"tool", "call", "build_sim", "--json", "{}"}, defaultToolCallFallbackTimeout},
+	}
+	for _, tc := range cases {
+		cfg, _, err := parseCLI(tc.args)
+		if err != nil {
+			t.Fatalf("parseCLI(%v) returned error: %v", tc.args, err)
+		}
+		if cfg.Timeout != tc.want {
+			t.Fatalf("parseCLI(%v) timeout = %s, want %s", tc.args, cfg.Timeout, tc.want)
+		}
 	}
 }
 
@@ -608,7 +649,7 @@ func TestRunAgentStatusText(t *testing.T) {
 				SocketReachable:   true,
 				Running:           true,
 				PID:               123,
-				IdleTimeout:       10 * time.Minute,
+				IdleTimeout:       24 * time.Hour,
 				BackendSessions:   2,
 			}, nil
 		}
@@ -618,8 +659,10 @@ func TestRunAgentStatusText(t *testing.T) {
 		if code != 0 {
 			t.Fatalf("exit code = %d, want 0 (stderr=%q)", code, stderr.String())
 		}
-		if !strings.Contains(stdout.String(), "backend sessions: 2") {
-			t.Fatalf("stdout = %q, want status output", stdout.String())
+		for _, want := range []string{"backend sessions: 2", "mcpbridge session idle timeout: 24h"} {
+			if !strings.Contains(stdout.String(), want) {
+				t.Fatalf("stdout = %q, want status output containing %q", stdout.String(), want)
+			}
 		}
 	})
 }

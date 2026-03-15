@@ -155,9 +155,16 @@ func doWithAutostart(ctx context.Context, cfg Config, req rpcRequest) (rpcRespon
 		fmt.Fprintf(cfg.ErrOut, "[debug] agent socket unavailable, ensuring LaunchAgent %s\n", cfg.Label)
 	}
 	if err := ensureAgentReady(ctx, cfg); err != nil {
+		if ctx.Err() != nil {
+			return rpcResponse{}, requestTimeoutError(req.TimeoutMS, "starting the LaunchAgent or initializing the mcpbridge session", ctx.Err())
+		}
 		return rpcResponse{}, err
 	}
-	return doRPC(ctx, cfg, req)
+	resp, err = doRPC(ctx, cfg, req)
+	if err != nil && ctx.Err() != nil {
+		return rpcResponse{}, requestTimeoutError(req.TimeoutMS, "connecting to the LaunchAgent after startup", ctx.Err())
+	}
+	return resp, err
 }
 
 func doRPC(ctx context.Context, cfg Config, req rpcRequest) (rpcResponse, error) {

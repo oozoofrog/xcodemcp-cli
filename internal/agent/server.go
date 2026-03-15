@@ -180,7 +180,7 @@ func (s *server) listTools(req rpcRequest) ([]map[string]any, error) {
 		return res.tools, nil
 	case <-ctx.Done():
 		s.discardClient(pooled)
-		return nil, fmt.Errorf("tools/list timed out: %w", ctx.Err())
+		return nil, requestTimeoutError(req.TimeoutMS, "listing tools", ctx.Err())
 	}
 }
 
@@ -218,7 +218,11 @@ func (s *server) callTool(req rpcRequest) (mcp.CallResult, error) {
 		return res.callResult, nil
 	case <-ctx.Done():
 		s.discardClient(pooled)
-		return mcp.CallResult{}, fmt.Errorf("tools/call timed out: %w", ctx.Err())
+		action := "calling a tool"
+		if req.ToolName != "" {
+			action = fmt.Sprintf("calling %s", req.ToolName)
+		}
+		return mcp.CallResult{}, requestTimeoutError(req.TimeoutMS, action, ctx.Err())
 	}
 }
 
@@ -248,6 +252,13 @@ func (s *server) ensureClient(ctx context.Context, pooled *pooledSession, req rp
 		ErrOut:  s.cfg.ErrOut,
 	})
 	if err != nil {
+		if ctx.Err() != nil {
+			action := "initializing the mcpbridge session"
+			if req.ToolName != "" {
+				action = fmt.Sprintf("initializing the mcpbridge session for %s", req.ToolName)
+			}
+			return nil, requestTimeoutError(req.TimeoutMS, action, ctx.Err())
+		}
 		return nil, err
 	}
 	pooled.client = client
