@@ -15,8 +15,8 @@ Usage:
   ./scripts/release_homebrew.sh <tag> [--tap-dir PATH] [--push] [--dry-run]
 
 Examples:
-  ./scripts/release_homebrew.sh v0.3.2 --tap-dir .tmp/homebrew-tap --dry-run
-  ./scripts/release_homebrew.sh v0.3.2 --push
+  ./scripts/release_homebrew.sh v0.4.0 --tap-dir .tmp/homebrew-tap --dry-run
+  ./scripts/release_homebrew.sh v0.4.0 --push
 
 Behavior:
   - Downloads the GitHub source tarball for the given tag

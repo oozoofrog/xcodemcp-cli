@@ -31,7 +31,7 @@ curl -fsSL https://raw.githubusercontent.com/oozoofrog/xcodecli/main/scripts/ins
 Install a specific tag or branch:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/oozoofrog/xcodecli/main/scripts/install.sh | bash -s -- --ref v0.3.2
+curl -fsSL https://raw.githubusercontent.com/oozoofrog/xcodecli/main/scripts/install.sh | bash -s -- --ref v0.4.0
 curl -fsSL https://raw.githubusercontent.com/oozoofrog/xcodecli/main/scripts/install.sh | bash -s -- --ref main
 ```
 
@@ -73,7 +73,7 @@ You can also override the package or output path:
 ```bash
 OUTPUT=.tmp/xcodecli ./scripts/build.sh
 PACKAGE=./cmd/xcodecli ./scripts/build.sh
-VERSION=v0.3.2 ./scripts/build.sh
+VERSION=v0.4.0 ./scripts/build.sh
 ```
 
 ## Usage
@@ -217,7 +217,7 @@ The project continues to use pre-1.0 semantic versioning tags with the following
 - Breaking CLI behavior is avoided when possible. Before `v1.0.0`, any unavoidable breaking change should ship in a new minor release and must be called out explicitly in `CHANGELOG.md` and the GitHub Release notes.
 - Releases should be cut from `main` only after CI is green.
 - Tags should remain annotated `vMAJOR.MINOR.PATCH` tags, and GitHub Releases should continue to use generated notes unless a release needs hand-written upgrade guidance.
-- The active maintenance line is `v0.3.x`. Small fixes should prefer the next patch tag on that line before opening a new minor series.
+- The active maintenance line is `v0.4.x`. Small fixes should prefer the next patch tag on that line before opening a new minor series.
 
 ## Notes
 

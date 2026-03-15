@@ -5,6 +5,8 @@ All notable changes to this project will be documented in this file.
 The format is inspired by [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses pre-1.0 semantic versioning tags.
 
 ## [Unreleased]
+
+## [0.4.0] - 2026-03-15
 ### Added
 - `xcodecli mcp config` for generating or writing MCP registration commands for Claude Code, Codex, and Gemini using `xcodecli bridge`.
 - Shorthand aliases `xcodecli mcp codex`, `xcodecli mcp claude`, and `xcodecli mcp gemini`.

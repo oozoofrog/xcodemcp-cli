@@ -9,7 +9,7 @@ usage() {
 Usage:
   ./scripts/install.sh [--bin-dir PATH] [--ref REF]
   curl -fsSL https://raw.githubusercontent.com/oozoofrog/xcodecli/main/scripts/install.sh | bash
-  curl -fsSL https://raw.githubusercontent.com/oozoofrog/xcodecli/main/scripts/install.sh | bash -s -- --ref v0.3.2
+  curl -fsSL https://raw.githubusercontent.com/oozoofrog/xcodecli/main/scripts/install.sh | bash -s -- --ref v0.4.0
 
 Options:
   --bin-dir PATH   Install directory for the xcodecli binary (default: $HOME/.local/bin)
