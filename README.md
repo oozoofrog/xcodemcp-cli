@@ -229,5 +229,5 @@ The project continues to use pre-1.0 semantic versioning tags with the following
 - `--timeout` is the **request timeout**. It includes first-use LaunchAgent startup, `mcpbridge` session initialization, and any auth prompts.
 - The default **mcpbridge session idle timeout** is `24h`. It controls how long pooled `mcpbridge` sessions stay alive while idle.
 - Active requests are **not** interrupted by the `mcpbridge session idle timeout`.
-- Default request timeouts are `60s` for `tools list`, `tool inspect`, `agent guide`, and `agent demo`; `tool call` uses tool-specific defaults (`60s` read/search/log, `120s` update/write/refresh, `30m` build/test, `5m` fallback).
+- Default request timeouts are `60s` for `tools list`, `tool inspect`, `agent guide`, and `agent demo`; `tool call` uses tool-specific defaults (`60s` list/read/search/log, `120s` update/write/refresh, `30m` build/test, `5m` fallback).
 - `tool call` accepts exactly one payload source: inline `--json`, `--json @file`, or `--json-stdin`.

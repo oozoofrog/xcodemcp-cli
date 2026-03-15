@@ -898,7 +898,7 @@ USAGE:
 FLAGS:
   --json PAYLOAD       JSON object passed as tools/call arguments, or @path to load a JSON file
   --json-stdin         Read the JSON object payload from stdin
-  --timeout DURATION   Override the request timeout. Defaults: 60s for read/search/log tools, 120s for update/write/refresh tools, 30m for BuildProject/RunAllTests/RunSomeTests, and 5m for other tools.
+  --timeout DURATION   Override the request timeout. Defaults: 60s for list/read/search/log tools, 120s for update/write/refresh tools, 30m for BuildProject/RunAllTests/RunSomeTests, and 5m for other tools.
   --xcode-pid PID      Override MCP_XCODE_PID
   --session-id UUID    Override MCP_XCODE_SESSION_ID
   --debug              Emit convenience-command debug logs to stderr
