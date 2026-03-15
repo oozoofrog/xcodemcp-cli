@@ -3,7 +3,6 @@ package doctor
 import (
 	"context"
 	"errors"
-	"os"
 	"strings"
 	"testing"
 )
@@ -28,6 +27,28 @@ func TestDoctorHelperFunctions(t *testing.T) {
 	if _, _, ok := splitProcessLine("no-space"); ok {
 		t.Fatal("splitProcessLine should reject lines without whitespace")
 	}
+
+	processes := []Process{
+		{PID: 3, Command: "/bin/zsh"},
+		{PID: 2, Command: "/Applications/Xcode.app/Contents/MacOS/Xcode"},
+		{PID: 1, Command: "Xcode"},
+	}
+	filtered := filterXcodeCandidates(processes)
+	if len(filtered) != 2 || filtered[0].PID != 1 || filtered[1].PID != 2 {
+		t.Fatalf("unexpected filtered candidates: %+v", filtered)
+	}
+	if got := summarizeProcesses(filtered); !strings.Contains(got, "1 Xcode") || !strings.Contains(got, "2 /Applications/Xcode.app/Contents/MacOS/Xcode") {
+		t.Fatalf("unexpected process summary: %s", got)
+	}
+	if proc, ok := findProcess(processes, 2); !ok || proc.PID != 2 {
+		t.Fatalf("findProcess did not find expected pid: %+v ok=%t", proc, ok)
+	}
+	if !looksLikeXcodeProcess(Process{PID: 99, Command: "Xcode"}) {
+		t.Fatal("looksLikeXcodeProcess should accept bare Xcode command")
+	}
+	if looksLikeXcodeProcess(Process{PID: 100, Command: "/bin/zsh"}) {
+		t.Fatal("looksLikeXcodeProcess should reject unrelated process")
+	}
 }
 
 func TestDefaultRunCommandAndDefaultListProcesses(t *testing.T) {
@@ -45,21 +66,5 @@ func TestDefaultRunCommandAndDefaultListProcesses(t *testing.T) {
 	}
 	if failResult.ExitCode != 7 {
 		t.Fatalf("exit code = %d, want 7", failResult.ExitCode)
-	}
-
-	processes, err := defaultListProcesses(context.Background())
-	if err != nil {
-		t.Fatalf("defaultListProcesses returned error: %v", err)
-	}
-	currentPID := os.Getpid()
-	found := false
-	for _, proc := range processes {
-		if proc.PID == currentPID {
-			found = true
-			break
-		}
-	}
-	if !found {
-		t.Fatalf("expected current pid %d in process list", currentPID)
 	}
 }

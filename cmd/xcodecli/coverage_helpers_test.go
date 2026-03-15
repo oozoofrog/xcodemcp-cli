@@ -34,6 +34,19 @@ func TestCLIUsageAndFlagHelpers(t *testing.T) {
 	}
 }
 
+func TestParseHelpAdditionalTopics(t *testing.T) {
+	for _, args := range [][]string{
+		{"help", "mcp"},
+		{"help", "tools"},
+		{"help", "tool"},
+		{"help", "serve"},
+	} {
+		if _, _, err := parseCLI(args); err != errUsageRequested {
+			t.Fatalf("parseCLI(%v) err = %v, want errUsageRequested", args, err)
+		}
+	}
+}
+
 func TestRunServeMCPDelegatesToMCPServer(t *testing.T) {
 	err := runServeMCP(context.Background(), mcp.ServerConfig{}, mcp.ServerHandler{})
 	if err == nil || !strings.Contains(err.Error(), "missing server stdin") {
