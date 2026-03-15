@@ -197,6 +197,17 @@ func doWithAutostart(ctx context.Context, cfg Config, req rpcRequest) (rpcRespon
 	if err == nil {
 		return resp, nil
 	}
+	var serverErr serverResponseError
+	if errors.As(err, &serverErr) {
+		return rpcResponse{}, err
+	}
+	if ctx.Err() != nil {
+		var unavailable unavailableError
+		if errors.As(err, &unavailable) && unavailable.stage == "connect" {
+			return rpcResponse{}, requestTimeoutError(effectiveReq.TimeoutMS, "connecting to the LaunchAgent after startup", ctx.Err())
+		}
+		return rpcResponse{}, requestTimeoutError(effectiveReq.TimeoutMS, requestTimeoutAction(req.Method, req.ToolName), ctx.Err())
+	}
 	if !isUnavailable(err) {
 		return rpcResponse{}, err
 	}
