@@ -6,6 +6,12 @@ The format is inspired by [Keep a Changelog](https://keepachangelog.com/en/1.1.0
 
 ## [Unreleased]
 
+### Added
+- `xcodecli serve`, a stdio MCP server mode that lets MCP clients talk to `xcodecli` directly while reusing the LaunchAgent-backed pooled `mcpbridge` runtime.
+
+### Changed
+- `xcodecli mcp config` and the `mcp <client>` aliases now target `xcodecli serve` by default, with `--mode bridge` available for raw passthrough compatibility.
+
 ## [0.4.1] - 2026-03-15
 ### Added
 - Hierarchical collaboration context docs (`CLAUDE.md` plus local `CONTEXT.md` files) for the CLI surface, internal packages, docs, and scripts.

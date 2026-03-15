@@ -22,6 +22,7 @@ import (
 var defaultBridgeCommand = bridge.Command{Path: "xcrun", Args: []string{"mcpbridge"}}
 var defaultMCPCommand = mcp.Command{Path: "xcrun", Args: []string{"mcpbridge"}}
 var defaultSessionPathFunc = bridge.DefaultSessionFilePath
+var defaultMCPServeFunc = runServeMCP
 var defaultAgentConfigFunc = func(command mcp.Command, env []string, errOut io.Writer) (agent.Config, error) {
 	return agent.DefaultConfig(command, env, errOut)
 }
@@ -131,6 +132,8 @@ func run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.
 			return 1
 		}
 		return result.ExitCode
+	case commandServe:
+		return runServe(ctx, cfg, env, stdin, stdout, stderr, agentCfg)
 	case commandToolsList:
 		resolved, err := resolveEffectiveOptions(env, cfg)
 		if err != nil {

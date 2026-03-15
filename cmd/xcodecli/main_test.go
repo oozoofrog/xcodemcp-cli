@@ -81,6 +81,19 @@ func TestParseCLIDoctorJSON(t *testing.T) {
 	}
 }
 
+func TestParseCLIServe(t *testing.T) {
+	cfg, _, err := parseCLI([]string{"serve", "--debug", "--session-id", "11111111-1111-1111-1111-111111111111"})
+	if err != nil {
+		t.Fatalf("parseCLI returned error: %v", err)
+	}
+	if cfg.Command != commandServe {
+		t.Fatalf("command = %q, want %q", cfg.Command, commandServe)
+	}
+	if !cfg.Debug || cfg.SessionID != "11111111-1111-1111-1111-111111111111" {
+		t.Fatalf("unexpected serve config: %+v", cfg)
+	}
+}
+
 func TestParseCLIToolsList(t *testing.T) {
 	cfg, _, err := parseCLI([]string{"tools", "list", "--json", "--timeout", "45s"})
 	if err != nil {
@@ -215,7 +228,7 @@ func TestParseCLIHelp(t *testing.T) {
 func TestRootUsageIncludesHumanAndAgentGuidance(t *testing.T) {
 	withVersionState(t, "v9.9.9", "dev", func() {
 		usage := rootUsage()
-		for _, want := range []string{"xcodecli v9.9.9 (dev)", "START HERE:", "For humans:", "For agents:", "xcodecli version", "xcodecli agent guide", "xcodecli agent demo", "xcodecli doctor --json", "xcodecli mcp codex", "xcodecli tool inspect <name> --json"} {
+		for _, want := range []string{"xcodecli v9.9.9 (dev)", "START HERE:", "For humans:", "For agents:", "xcodecli version", "xcodecli serve", "xcodecli agent guide", "xcodecli agent demo", "xcodecli doctor --json", "xcodecli mcp codex", "xcodecli tool inspect <name> --json"} {
 			if !strings.Contains(usage, want) {
 				t.Fatalf("root usage missing %q: %s", want, usage)
 			}
@@ -345,6 +358,44 @@ func TestRunDoctorJSON(t *testing.T) {
 		}
 		if !report.Success || len(report.Checks) == 0 {
 			t.Fatalf("unexpected report: %+v", report)
+		}
+	})
+}
+
+func TestRunServeUsesPersistentSessionID(t *testing.T) {
+	withStubs(t, func() {
+		oldSessionPathFunc := defaultSessionPathFunc
+		sessionPath := filepath.Join(t.TempDir(), "session-id")
+		defaultSessionPathFunc = func() (string, error) { return sessionPath, nil }
+		defer func() { defaultSessionPathFunc = oldSessionPathFunc }()
+
+		oldServe := defaultMCPServeFunc
+		defer func() { defaultMCPServeFunc = oldServe }()
+		defaultMCPServeFunc = func(ctx context.Context, cfg mcp.ServerConfig, handler mcp.ServerHandler) error {
+			tools, err := handler.ListTools(ctx)
+			if err != nil {
+				t.Fatalf("ListTools handler returned error: %v", err)
+			}
+			if len(tools) != 1 || tools[0]["name"] != "list_windows" {
+				t.Fatalf("unexpected tools: %+v", tools)
+			}
+			return nil
+		}
+		defaultToolsListFunc = func(ctx context.Context, cfg agent.Config, req agent.Request) ([]map[string]any, error) {
+			if !bridge.IsValidUUID(req.SessionID) {
+				t.Fatalf("req.SessionID = %q, want valid UUID", req.SessionID)
+			}
+			return []map[string]any{{"name": "list_windows"}}, nil
+		}
+
+		var stdout strings.Builder
+		var stderr strings.Builder
+		code := run(context.Background(), []string{"serve", "--debug"}, strings.NewReader(""), &stdout, &stderr, os.Environ())
+		if code != 0 {
+			t.Fatalf("exit code = %d, want 0 (stderr=%q)", code, stderr.String())
+		}
+		if !strings.Contains(stderr.String(), "generated persistent MCP_XCODE_SESSION_ID") {
+			t.Fatalf("stderr = %q, want session debug log", stderr.String())
 		}
 	})
 }
@@ -736,6 +787,7 @@ func withStubs(t *testing.T, fn func()) {
 	oldCall := defaultToolCallFunc
 	oldExecutablePath := defaultExecutablePathFunc
 	oldMCPRunner := defaultMCPCommandRunner
+	oldServe := defaultMCPServeFunc
 	oldArgv0 := defaultArgv0Func
 	oldGetwd := defaultGetwdFunc
 	oldLookPath := defaultLookPathFunc
@@ -761,6 +813,9 @@ func withStubs(t *testing.T, fn func()) {
 	defaultMCPCommandRunner = func(ctx context.Context, name string, args []string) (externalCommandResult, error) {
 		return externalCommandResult{}, errors.New("unexpected mcp config command")
 	}
+	defaultMCPServeFunc = func(ctx context.Context, cfg mcp.ServerConfig, handler mcp.ServerHandler) error {
+		return nil
+	}
 	defaultArgv0Func = func() string { return "/tmp/xcodecli-test" }
 	defaultGetwdFunc = func() (string, error) { return "/tmp", nil }
 	defaultLookPathFunc = func(file string) (string, error) { return "", errors.New("unexpected lookpath") }
@@ -778,6 +833,7 @@ func withStubs(t *testing.T, fn func()) {
 		defaultToolCallFunc = oldCall
 		defaultExecutablePathFunc = oldExecutablePath
 		defaultMCPCommandRunner = oldMCPRunner
+		defaultMCPServeFunc = oldServe
 		defaultArgv0Func = oldArgv0
 		defaultGetwdFunc = oldGetwd
 		defaultLookPathFunc = oldLookPath

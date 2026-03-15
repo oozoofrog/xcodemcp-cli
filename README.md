@@ -78,13 +78,14 @@ VERSION=v0.4.0 ./scripts/build.sh
 
 ## Usage
 
-Running `xcodecli` with no arguments prints help. Use `bridge` for raw passthrough to `xcrun mcpbridge`.
+Running `xcodecli` with no arguments prints help. Use `bridge` for raw passthrough to `xcrun mcpbridge`, or `serve` when an MCP client should talk to `xcodecli` directly while reusing the LaunchAgent-backed runtime.
 
 ```bash
 ./xcodecli
 ./xcodecli version
 ./xcodecli --xcode-pid 12345
 ./xcodecli bridge --session-id 11111111-1111-1111-1111-111111111111
+./xcodecli serve --session-id 11111111-1111-1111-1111-111111111111
 ```
 
 Fastest workflow tutor for a real request:
@@ -125,9 +126,11 @@ Generate MCP registration commands for supported clients:
 ```
 
 Notes:
-- `mcp config` always targets `xcodecli bridge`.
+- `mcp config` targets `xcodecli serve` by default so MCP clients reuse the LaunchAgent-backed pooled runtime.
+- Use `--mode bridge` if you explicitly want raw `xcodecli bridge` passthrough instead.
 - `xcodecli mcp codex|claude|gemini` are shorthand aliases for `xcodecli mcp config --client ...`.
 - Output-only mode prints a ready-to-paste registration command and does **not** create or reuse `xcodecli`'s persistent session file.
+- The first actual `serve` run creates or reuses `xcodecli`'s persistent session ID at runtime if you did not pass `--session-id`.
 - `--write` delegates registration to the target client CLI instead of editing that client's config files directly.
 - Gemini defaults to `--scope user` so it does not write `.gemini/settings.json` into the current project unless you explicitly choose `--scope project`.
 
