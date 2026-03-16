@@ -137,17 +137,9 @@ func run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.
 	case commandServe:
 		return runServe(ctx, cfg, env, stdin, stdout, stderr, agentCfg)
 	case commandToolsList:
-		resolved, err := resolveEffectiveOptions(env, cfg)
+		effective, err := resolveAndValidateOptions(env, cfg, stderr)
 		if err != nil {
 			fmt.Fprintf(stderr, "xcodecli: %v\n", err)
-			return 1
-		}
-		if cfg.Debug {
-			logResolvedSession(stderr, resolved)
-		}
-		effective := resolved.EnvOptions
-		if err := bridge.ValidateEnvOptions(effective); err != nil {
-			fmt.Fprintf(stderr, "xcodecli: invalid MCP options: %v\n", err)
 			return 1
 		}
 		requestCtx, cancel := requestTimeoutContext(ctx, cfg.Timeout)
@@ -176,17 +168,9 @@ func run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.
 		}
 		return 0
 	case commandToolInspect:
-		resolved, err := resolveEffectiveOptions(env, cfg)
+		effective, err := resolveAndValidateOptions(env, cfg, stderr)
 		if err != nil {
 			fmt.Fprintf(stderr, "xcodecli: %v\n", err)
-			return 1
-		}
-		if cfg.Debug {
-			logResolvedSession(stderr, resolved)
-		}
-		effective := resolved.EnvOptions
-		if err := bridge.ValidateEnvOptions(effective); err != nil {
-			fmt.Fprintf(stderr, "xcodecli: invalid MCP options: %v\n", err)
 			return 1
 		}
 		requestCtx, cancel := requestTimeoutContext(ctx, cfg.Timeout)
@@ -215,17 +199,9 @@ func run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.
 		}
 		return 0
 	case commandToolCall:
-		resolved, err := resolveEffectiveOptions(env, cfg)
+		effective, err := resolveAndValidateOptions(env, cfg, stderr)
 		if err != nil {
 			fmt.Fprintf(stderr, "xcodecli: %v\n", err)
-			return 1
-		}
-		if cfg.Debug {
-			logResolvedSession(stderr, resolved)
-		}
-		effective := resolved.EnvOptions
-		if err := bridge.ValidateEnvOptions(effective); err != nil {
-			fmt.Fprintf(stderr, "xcodecli: invalid MCP options: %v\n", err)
 			return 1
 		}
 		arguments, err := resolveToolArguments(stdin, cfg)
@@ -305,6 +281,21 @@ func resolveEffectiveOptions(env []string, cfg cliConfig) (bridge.ResolvedOption
 		XcodePID:  cfg.XcodePID,
 		SessionID: cfg.SessionID,
 	}, sessionPath)
+}
+
+func resolveAndValidateOptions(env []string, cfg cliConfig, stderr io.Writer) (bridge.EnvOptions, error) {
+	resolved, err := resolveEffectiveOptions(env, cfg)
+	if err != nil {
+		return bridge.EnvOptions{}, err
+	}
+	if cfg.Debug {
+		logResolvedSession(stderr, resolved)
+	}
+	effective := resolved.EnvOptions
+	if err := bridge.ValidateEnvOptions(effective); err != nil {
+		return bridge.EnvOptions{}, fmt.Errorf("invalid MCP options: %v", err)
+	}
+	return effective, nil
 }
 
 func agentRequest(env []string, effective bridge.EnvOptions, cfg cliConfig) agent.Request {

@@ -33,11 +33,6 @@ func formatUpdateResult(result selfupdate.Result) string {
 			return fmt.Sprintf("xcodecli is already up to date via Homebrew (%s)", targetVersion)
 		}
 		return fmt.Sprintf("updated xcodecli via Homebrew: %s -> %s", result.CurrentVersion, targetVersion)
-	case "direct":
-		if result.AlreadyUpToDate {
-			return fmt.Sprintf("xcodecli is already up to date (%s)", targetVersion)
-		}
-		return fmt.Sprintf("updated xcodecli: %s -> %s", result.CurrentVersion, targetVersion)
 	default:
 		if result.AlreadyUpToDate {
 			return fmt.Sprintf("xcodecli is already up to date (%s)", targetVersion)

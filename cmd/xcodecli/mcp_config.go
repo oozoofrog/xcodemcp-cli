@@ -14,6 +14,7 @@ import (
 	"strings"
 
 	"github.com/oozoofrog/xcodecli/internal/bridge"
+	"github.com/oozoofrog/xcodecli/internal/pathutil"
 )
 
 type externalCommandResult struct {
@@ -437,55 +438,10 @@ func resolveConfiguredExecutablePath() (string, bool, error) {
 }
 
 func validateConfiguredExecutablePath(path string) (string, error) {
-	if isTemporaryGoBuildExecutable(path) {
+	if pathutil.IsTemporaryGoBuildExecutable(path, defaultTempDirFunc) {
 		return "", fmt.Errorf("current executable path appears to be a temporary Go build output (%s); rerun `mcp config` using an installed or directly built xcodecli binary", path)
 	}
 	return path, nil
-}
-
-func isTemporaryGoBuildExecutable(path string) bool {
-	if strings.TrimSpace(path) == "" {
-		return false
-	}
-	normalizedPath := normalizePrivatePrefix(filepath.Clean(path))
-	normalizedTempDir := normalizePrivatePrefix(filepath.Clean(defaultTempDirFunc()))
-	if !pathWithinBase(normalizedPath, normalizedTempDir) {
-		return false
-	}
-	if filepath.Base(normalizedPath) != "xcodecli" {
-		return false
-	}
-	if filepath.Base(filepath.Dir(normalizedPath)) != "exe" {
-		return false
-	}
-	for _, part := range strings.Split(filepath.ToSlash(normalizedPath), "/") {
-		if strings.HasPrefix(part, "go-build") {
-			return true
-		}
-	}
-	return false
-}
-
-func normalizePrivatePrefix(path string) string {
-	const privatePrefix = "/private"
-	if strings.HasPrefix(path, privatePrefix+"/") {
-		return strings.TrimPrefix(path, privatePrefix)
-	}
-	return path
-}
-
-func pathWithinBase(path, base string) bool {
-	if path == base {
-		return true
-	}
-	if base == "" {
-		return false
-	}
-	rel, err := filepath.Rel(base, path)
-	if err != nil {
-		return false
-	}
-	return rel == "." || (rel != ".." && !strings.HasPrefix(rel, ".."+string(os.PathSeparator)))
 }
 
 func runExternalCommand(ctx context.Context, name string, args []string) (externalCommandResult, error) {

@@ -11,6 +11,8 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+
+	"github.com/oozoofrog/xcodecli/internal/pathutil"
 )
 
 const (
@@ -74,7 +76,7 @@ func Run(ctx context.Context, cfg Config) (Result, error) {
 		executablePath = resolved
 	}
 
-	if isTemporaryGoBuildExecutable(executablePath) {
+	if pathutil.IsTemporaryGoBuildExecutable(executablePath, defaultTempDirFunc) {
 		return Result{}, fmt.Errorf("current executable path appears to be a temporary Go build output (%s); rerun `xcodecli update` using an installed or directly built xcodecli binary", executablePath)
 	}
 
@@ -117,7 +119,7 @@ func detectHomebrewInstallation(ctx context.Context, executablePath string) (boo
 		}
 		return false, "", nil
 	}
-	if pathWithinBase(executablePath, prefix) {
+	if pathutil.PathWithinBase(executablePath, prefix) {
 		return true, prefix, nil
 	}
 	return false, "", nil
@@ -380,53 +382,8 @@ func cleanResolvedPath(path string) string {
 }
 
 func looksLikeHomebrewPath(path string) bool {
-	normalized := filepath.ToSlash(normalizePrivatePrefix(cleanResolvedPath(path)))
+	normalized := filepath.ToSlash(pathutil.NormalizePrivatePrefix(cleanResolvedPath(path)))
 	return strings.Contains(normalized, "/Cellar/xcodecli/") || strings.Contains(normalized, "/cellar/xcodecli/")
-}
-
-func isTemporaryGoBuildExecutable(path string) bool {
-	if strings.TrimSpace(path) == "" {
-		return false
-	}
-	normalizedPath := normalizePrivatePrefix(filepath.Clean(path))
-	normalizedTempDir := normalizePrivatePrefix(filepath.Clean(defaultTempDirFunc()))
-	if !pathWithinBase(normalizedPath, normalizedTempDir) {
-		return false
-	}
-	if filepath.Base(normalizedPath) != "xcodecli" {
-		return false
-	}
-	if filepath.Base(filepath.Dir(normalizedPath)) != "exe" {
-		return false
-	}
-	for _, part := range strings.Split(filepath.ToSlash(normalizedPath), "/") {
-		if strings.HasPrefix(part, "go-build") {
-			return true
-		}
-	}
-	return false
-}
-
-func normalizePrivatePrefix(path string) string {
-	const privatePrefix = "/private"
-	if strings.HasPrefix(path, privatePrefix+"/") {
-		return strings.TrimPrefix(path, privatePrefix)
-	}
-	return path
-}
-
-func pathWithinBase(path, base string) bool {
-	if path == base {
-		return true
-	}
-	if base == "" {
-		return false
-	}
-	rel, err := filepath.Rel(base, path)
-	if err != nil {
-		return false
-	}
-	return rel == "." || (rel != ".." && !strings.HasPrefix(rel, ".."+string(os.PathSeparator)))
 }
 
 type semver struct {

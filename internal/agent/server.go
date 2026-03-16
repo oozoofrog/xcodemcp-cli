@@ -2,6 +2,7 @@ package agent
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -135,7 +136,7 @@ func (s *server) handleConn(conn net.Conn) {
 		return
 	}
 	var req rpcRequest
-	if err := json.Unmarshal(bytesTrimSpace(line), &req); err != nil {
+	if err := json.Unmarshal(bytes.TrimSpace(line), &req); err != nil {
 		s.writeResponse(conn, rpcResponse{Error: fmt.Sprintf("decode agent request: %v", err)})
 		return
 	}

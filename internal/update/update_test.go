@@ -10,6 +10,8 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+
+	"github.com/oozoofrog/xcodecli/internal/pathutil"
 )
 
 func TestParseLatestTagSelectsNewestSemanticVersion(t *testing.T) {
@@ -496,31 +498,29 @@ func BenchmarkParseLatestTag(b *testing.B) {
 }
 
 func TestIsTemporaryGoBuildExecutable(t *testing.T) {
-	withStubs(t, func() {
-		defaultTempDirFunc = func() string { return "/tmp" }
+	tempDir := func() string { return "/tmp" }
 
-		cases := []struct {
-			name string
-			path string
-			want bool
-		}{
-			{"go-build path", "/tmp/go-build123/b001/exe/xcodecli", true},
-			{"non-temp path", "/usr/local/bin/xcodecli", false},
-			{"empty string", "", false},
-			{"private prefix normalization", "/private/tmp/go-build456/b001/exe/xcodecli", true},
-			{"temp but not go-build", "/tmp/other/exe/xcodecli", false},
-			{"go-build but not exe dir", "/tmp/go-build123/b001/xcodecli", false},
-			{"go-build but wrong binary name", "/tmp/go-build123/b001/exe/other", false},
-		}
-		for _, tc := range cases {
-			t.Run(tc.name, func(t *testing.T) {
-				got := isTemporaryGoBuildExecutable(tc.path)
-				if got != tc.want {
-					t.Fatalf("isTemporaryGoBuildExecutable(%q) = %v, want %v", tc.path, got, tc.want)
-				}
-			})
-		}
-	})
+	cases := []struct {
+		name string
+		path string
+		want bool
+	}{
+		{"go-build path", "/tmp/go-build123/b001/exe/xcodecli", true},
+		{"non-temp path", "/usr/local/bin/xcodecli", false},
+		{"empty string", "", false},
+		{"private prefix normalization", "/private/tmp/go-build456/b001/exe/xcodecli", true},
+		{"temp but not go-build", "/tmp/other/exe/xcodecli", false},
+		{"go-build but not exe dir", "/tmp/go-build123/b001/xcodecli", false},
+		{"go-build but wrong binary name", "/tmp/go-build123/b001/exe/other", false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := pathutil.IsTemporaryGoBuildExecutable(tc.path, tempDir)
+			if got != tc.want {
+				t.Fatalf("IsTemporaryGoBuildExecutable(%q) = %v, want %v", tc.path, got, tc.want)
+			}
+		})
+	}
 }
 
 func TestNormalizePrivatePrefix(t *testing.T) {
@@ -537,9 +537,9 @@ func TestNormalizePrivatePrefix(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			got := normalizePrivatePrefix(tc.path)
+			got := pathutil.NormalizePrivatePrefix(tc.path)
 			if got != tc.want {
-				t.Fatalf("normalizePrivatePrefix(%q) = %q, want %q", tc.path, got, tc.want)
+				t.Fatalf("NormalizePrivatePrefix(%q) = %q, want %q", tc.path, got, tc.want)
 			}
 		})
 	}
@@ -561,9 +561,9 @@ func TestPathWithinBase(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			got := pathWithinBase(tc.path, tc.base)
+			got := pathutil.PathWithinBase(tc.path, tc.base)
 			if got != tc.want {
-				t.Fatalf("pathWithinBase(%q, %q) = %v, want %v", tc.path, tc.base, got, tc.want)
+				t.Fatalf("PathWithinBase(%q, %q) = %v, want %v", tc.path, tc.base, got, tc.want)
 			}
 		})
 	}

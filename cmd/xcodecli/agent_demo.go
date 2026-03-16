@@ -172,6 +172,10 @@ func (r *agentDemoReport) addError(step, message string) {
 }
 
 func buildDemoToolCatalog(tools []map[string]any) demoToolCatalog {
+	return buildToolCatalog(tools, demoHighlightToolNames)
+}
+
+func buildToolCatalog(tools []map[string]any, highlightNames []string) demoToolCatalog {
 	names := make([]string, 0, len(tools))
 	for _, tool := range tools {
 		if name, _ := tool["name"].(string); name != "" {
@@ -179,8 +183,8 @@ func buildDemoToolCatalog(tools []map[string]any) demoToolCatalog {
 		}
 	}
 
-	highlights := make([]demoToolHighlight, 0, len(demoHighlightToolNames))
-	for _, name := range demoHighlightToolNames {
+	highlights := make([]demoToolHighlight, 0, len(highlightNames))
+	for _, name := range highlightNames {
 		tool, found := findToolByName(tools, name)
 		if !found {
 			continue

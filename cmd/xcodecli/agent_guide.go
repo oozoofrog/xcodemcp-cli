@@ -259,31 +259,7 @@ func collectGuideEnvironment(ctx context.Context, cfg cliConfig, env []string, a
 }
 
 func buildGuideToolCatalog(tools []map[string]any) demoToolCatalog {
-	names := make([]string, 0, len(tools))
-	for _, tool := range tools {
-		if name, _ := tool["name"].(string); name != "" {
-			names = append(names, name)
-		}
-	}
-
-	highlights := make([]demoToolHighlight, 0, len(guideHighlightToolNames))
-	for _, name := range guideHighlightToolNames {
-		tool, found := findToolByName(tools, name)
-		if !found {
-			continue
-		}
-		highlights = append(highlights, demoToolHighlight{
-			Name:         name,
-			Description:  stringValue(tool["description"]),
-			RequiredArgs: requiredArgsFromTool(tool),
-		})
-	}
-
-	return demoToolCatalog{
-		Count:      len(names),
-		Names:      names,
-		Highlights: highlights,
-	}
+	return buildToolCatalog(tools, guideHighlightToolNames)
 }
 
 func parseGuideWindowEntries(result map[string]any) []guideWindowEntry {

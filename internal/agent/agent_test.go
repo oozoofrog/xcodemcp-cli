@@ -2,6 +2,7 @@ package agent
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -736,7 +737,7 @@ func TestListToolsAutostartUsesRemainingTimeoutBudget(t *testing.T) {
 				}
 
 				var req rpcRequest
-				if err := json.Unmarshal(bytesTrimSpace(line), &req); err != nil {
+				if err := json.Unmarshal(bytes.TrimSpace(line), &req); err != nil {
 					t.Errorf("decode request: %v", err)
 					return
 				}
@@ -1164,7 +1165,7 @@ func TestAgentHelperProcess(t *testing.T) {
 		if err != nil {
 			os.Exit(0)
 		}
-		line = bytesTrimSpace(line)
+		line = bytes.TrimSpace(line)
 		if len(line) == 0 {
 			continue
 		}

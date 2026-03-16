@@ -2,6 +2,7 @@ package agent
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -312,7 +313,7 @@ func doRPC(ctx context.Context, cfg Config, req rpcRequest) (rpcResponse, error)
 		}
 		return rpcResponse{}, fmt.Errorf("read agent response: %w", err)
 	}
-	line = bytesTrimSpace(line)
+	line = bytes.TrimSpace(line)
 	var resp rpcResponse
 	if err := json.Unmarshal(line, &resp); err != nil {
 		return rpcResponse{}, fmt.Errorf("decode agent response: %w", err)
@@ -413,16 +414,3 @@ func isUnavailable(err error) bool {
 	return strings.Contains(text, "no such file or directory") || strings.Contains(text, "connection refused")
 }
 
-func bytesTrimSpace(data []byte) []byte {
-	for len(data) > 0 && (data[0] == ' ' || data[0] == '\n' || data[0] == '\r' || data[0] == '\t') {
-		data = data[1:]
-	}
-	for len(data) > 0 {
-		last := data[len(data)-1]
-		if last != ' ' && last != '\n' && last != '\r' && last != '\t' {
-			break
-		}
-		data = data[:len(data)-1]
-	}
-	return data
-}

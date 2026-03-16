@@ -595,6 +595,14 @@ func parseAgentRunFlags(name string, args []string) (cliConfig, error) {
 }
 
 func extractPositionalArg(args []string, takesValue func(string) bool) (string, []string, error) {
+	return extractPositionalArgGeneric(args, takesValue, true)
+}
+
+func extractOptionalPositionalArg(args []string, takesValue func(string) bool) (string, []string, error) {
+	return extractPositionalArgGeneric(args, takesValue, false)
+}
+
+func extractPositionalArgGeneric(args []string, takesValue func(string) bool, required bool) (string, []string, error) {
 	for i := 0; i < len(args); i++ {
 		arg := args[i]
 		if arg == "--" {
@@ -613,27 +621,8 @@ func extractPositionalArg(args []string, takesValue func(string) bool) (string, 
 		flagArgs = append(flagArgs, args[i+1:]...)
 		return arg, flagArgs, nil
 	}
-	return "", nil, errors.New("missing required name")
-}
-
-func extractOptionalPositionalArg(args []string, takesValue func(string) bool) (string, []string, error) {
-	for i := 0; i < len(args); i++ {
-		arg := args[i]
-		if arg == "--" {
-			continue
-		}
-		if strings.HasPrefix(arg, "-") {
-			if takesValue(arg) {
-				if i+1 >= len(args) {
-					return "", nil, fmt.Errorf("flag needs an argument: %s", arg)
-				}
-				i++
-			}
-			continue
-		}
-		flagArgs := append([]string{}, args[:i]...)
-		flagArgs = append(flagArgs, args[i+1:]...)
-		return arg, flagArgs, nil
+	if required {
+		return "", nil, errors.New("missing required name")
 	}
 	return "", append([]string{}, args...), nil
 }
