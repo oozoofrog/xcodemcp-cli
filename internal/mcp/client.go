@@ -82,6 +82,26 @@ type toolsListResult struct {
 }
 
 func ListTools(ctx context.Context, cfg Config) ([]map[string]any, error) {
+	result, err := runWithClient(ctx, cfg, func(c *Client) (any, error) {
+		return c.ListTools()
+	})
+	if err != nil {
+		return nil, err
+	}
+	return result.([]map[string]any), nil
+}
+
+func CallTool(ctx context.Context, cfg Config, name string, arguments map[string]any) (CallResult, error) {
+	result, err := runWithClient(ctx, cfg, func(c *Client) (any, error) {
+		return c.CallTool(name, arguments)
+	})
+	if err != nil {
+		return CallResult{}, err
+	}
+	return result.(CallResult), nil
+}
+
+func runWithClient(ctx context.Context, cfg Config, fn func(*Client) (any, error)) (any, error) {
 	client, err := NewClient(ctx, cfg)
 	if err != nil {
 		return nil, err
@@ -89,47 +109,21 @@ func ListTools(ctx context.Context, cfg Config) ([]map[string]any, error) {
 	defer func() { _ = client.Close() }()
 
 	type result struct {
-		tools []map[string]any
+		value any
 		err   error
 	}
 	resultCh := make(chan result, 1)
 	go func() {
-		tools, callErr := client.ListTools()
-		resultCh <- result{tools: tools, err: callErr}
+		val, callErr := fn(client)
+		resultCh <- result{value: val, err: callErr}
 	}()
 
 	select {
 	case res := <-resultCh:
-		return res.tools, res.err
+		return res.value, res.err
 	case <-ctx.Done():
 		_ = client.Abort()
 		return nil, ctx.Err()
-	}
-}
-
-func CallTool(ctx context.Context, cfg Config, name string, arguments map[string]any) (CallResult, error) {
-	client, err := NewClient(ctx, cfg)
-	if err != nil {
-		return CallResult{}, err
-	}
-	defer func() { _ = client.Close() }()
-
-	type result struct {
-		callResult CallResult
-		err        error
-	}
-	resultCh := make(chan result, 1)
-	go func() {
-		callResult, callErr := client.CallTool(name, arguments)
-		resultCh <- result{callResult: callResult, err: callErr}
-	}()
-
-	select {
-	case res := <-resultCh:
-		return res.callResult, res.err
-	case <-ctx.Done():
-		_ = client.Abort()
-		return CallResult{}, ctx.Err()
 	}
 }
 

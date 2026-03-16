@@ -175,19 +175,9 @@ func doWithAutostart(ctx context.Context, cfg Config, req rpcRequest) (rpcRespon
 		}
 		resp, err := doRPC(ctx, cfg, effectiveReq)
 		if err != nil {
-			var serverErr serverResponseError
-			if errors.As(err, &serverErr) {
-				return rpcResponse{}, err
-			}
-			if ctx.Err() != nil {
-				var unavailable unavailableError
-				if errors.As(err, &unavailable) && unavailable.stage == "connect" {
-					return rpcResponse{}, requestTimeoutError(effectiveReq.TimeoutMS, "connecting to the LaunchAgent after startup", ctx.Err())
-				}
-				return rpcResponse{}, requestTimeoutError(effectiveReq.TimeoutMS, requestTimeoutAction(req.Method, req.ToolName), ctx.Err())
-			}
+			return rpcResponse{}, handleRPCError(ctx, err, effectiveReq, req)
 		}
-		return resp, err
+		return resp, nil
 	}
 
 	effectiveReq, err := requestWithRemainingTimeout(ctx, req)
@@ -231,19 +221,24 @@ func doWithAutostart(ctx context.Context, cfg Config, req rpcRequest) (rpcRespon
 	}
 	resp, err = doRPC(ctx, cfg, effectiveReq)
 	if err != nil {
-		var serverErr serverResponseError
-		if errors.As(err, &serverErr) {
-			return rpcResponse{}, err
-		}
-		if ctx.Err() != nil {
-			var unavailable unavailableError
-			if errors.As(err, &unavailable) && unavailable.stage == "connect" {
-				return rpcResponse{}, requestTimeoutError(effectiveReq.TimeoutMS, "connecting to the LaunchAgent after startup", ctx.Err())
-			}
-			return rpcResponse{}, requestTimeoutError(effectiveReq.TimeoutMS, requestTimeoutAction(req.Method, req.ToolName), ctx.Err())
-		}
+		return rpcResponse{}, handleRPCError(ctx, err, effectiveReq, req)
 	}
-	return resp, err
+	return resp, nil
+}
+
+func handleRPCError(ctx context.Context, err error, effectiveReq, origReq rpcRequest) error {
+	var serverErr serverResponseError
+	if errors.As(err, &serverErr) {
+		return err
+	}
+	if ctx.Err() != nil {
+		var unavailable unavailableError
+		if errors.As(err, &unavailable) && unavailable.stage == "connect" {
+			return requestTimeoutError(effectiveReq.TimeoutMS, "connecting to the LaunchAgent after startup", ctx.Err())
+		}
+		return requestTimeoutError(effectiveReq.TimeoutMS, requestTimeoutAction(origReq.Method, origReq.ToolName), ctx.Err())
+	}
+	return err
 }
 
 func launchAgentBinaryMismatch(cfg Config) (bool, string) {
