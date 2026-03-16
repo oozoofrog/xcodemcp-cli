@@ -1,6 +1,6 @@
 # xcodecli 구현 명세서
 
-> Baseline version: `v0.5.2`
+> Baseline version: `v0.5.4`
 >
 > 이 문서는 `xcodecli`의 공개 기능, 내부 구조, 프로토콜, 설치/배포/운영 규칙을 **다른 언어에서도 재구현 가능한 수준**으로 정리한 기술 명세서입니다.
 >
@@ -116,6 +116,21 @@
   - 환경 진단 보고서 생성
 - `internal/update`
   - Homebrew 및 직접 설치용 자기 업데이트 orchestration
+
+### 3.4 Pooled Session 관리
+agent 서버는 composite key 기반으로 pooled MCP session map을 관리한다.
+
+#### session key
+```go
+sessionKey = {XcodePID, SessionID, DeveloperDir}
+```
+조합이 다르면 별도의 backend `mcpbridge` 프로세스가 생성되어, 서로 다른 Xcode 인스턴스/세션에 대한 multiplexing이 가능하다.
+
+#### session 수명 주기
+1. **Prepare**: `prepareSession(key)`가 해당 key의 `pooledSession`을 조회하거나 새로 생성하고, `inFlight`를 증가시키고 `retireWhenIdle` 플래그를 해제한다. `inFlight == 0`인 다른 세션은 pool에서 제거하여 비동기 abort 대상으로 반환한다.
+2. **Ensure client**: 세션의 첫 요청 시 `ensureClient()`가 `xcrun mcpbridge` subprocess를 생성하고, 환경 변수 override(`MCP_XCODE_PID`, `MCP_XCODE_SESSION_ID`, `DEVELOPER_DIR`)를 적용한 뒤 MCP 초기화를 수행한다.
+3. **Finish**: `finishSession(pooled)`가 `inFlight`를 감소시킨다. `inFlight`가 0이 되고 `retireWhenIdle`이 설정되어 있으면 pool에서 제거 후 비동기 abort한다.
+4. **실패 시 폐기**: `discardClientLocked(pooled)`가 현재 client를 강제 abort하고 nil로 설정하여, 다음 요청이 새 subprocess를 생성하도록 한다.
 
 ### 3.3 런타임 토폴로지
 #### `bridge`
@@ -255,8 +270,8 @@ xcodecli --version
 ```
 
 #### 출력
-- release build: `xcodecli v0.5.2`
-- dev build: `xcodecli v0.5.2 (dev)`
+- release build: `xcodecli v0.5.4`
+- dev build: `xcodecli v0.5.4 (dev)`
 
 
 ### 6.4 `update`
@@ -278,8 +293,8 @@ xcodecli update
 7. 새 바이너리의 `version` 출력을 확인한다.
 
 #### 출력 예
-- Homebrew 최신 상태: `xcodecli is already up to date via Homebrew (v0.5.2)`
-- 직접 설치 업데이트 완료: `updated xcodecli: v0.5.1 -> v0.5.2`
+- Homebrew 최신 상태: `xcodecli is already up to date via Homebrew (v0.5.4)`
+- 직접 설치 업데이트 완료: `updated xcodecli: v0.5.1 -> v0.5.4`
 
 #### 노트
 - Homebrew가 아닌 경로는 모두 직접 설치로 간주한다.
@@ -339,11 +354,12 @@ xcodecli serve [--xcode-pid PID] [--session-id UUID] [--debug]
   "jsonrpc": "2.0",
   "id": 1,
   "method": "initialize",
-  "params": {"protocolVersion": "2025-06-18"}
+  "params": {"protocolVersion": "2025-11-25"}
 }
 ```
 
 지원 버전:
+- `2025-11-25`
 - `2025-06-18`
 - `2025-03-26`
 - `2024-11-05`
@@ -351,6 +367,19 @@ xcodecli serve [--xcode-pid PID] [--session-id UUID] [--debug]
 응답 규칙:
 - 지원 버전이면 그 버전을 그대로 `protocolVersion`으로 echo
 - 미지원이면 `-32602` + `{requested, supported}` data 포함
+
+응답 예 (성공):
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "result": {
+    "protocolVersion": "2025-11-25",
+    "capabilities": {"tools": {}},
+    "serverInfo": {"name": "xcodecli", "version": "v0.5.4"}
+  }
+}
+```
 
 ##### notifications/initialized
 - 응답 없음
@@ -697,6 +726,11 @@ LaunchAgent 설치/실행/세션 상태 확인
 ```
 
 ### 7.2 MCP stdio client
+
+#### 요청 프로토콜 버전
+- 클라이언트는 기본적으로 `"2025-11-25"`를 요청 (`requestProtocolVersion` 상수)
+- 서버는 지원 목록 내 다른 버전으로 협상 가능
+
 #### initialize request
 ```json
 {
@@ -704,7 +738,7 @@ LaunchAgent 설치/실행/세션 상태 확인
   "id": 1,
   "method": "initialize",
   "params": {
-    "protocolVersion": "2025-06-18",
+    "protocolVersion": "2025-11-25",
     "capabilities": {},
     "clientInfo": {"name":"xcodecli","version":"dev"}
   }
@@ -724,17 +758,39 @@ LaunchAgent 설치/실행/세션 상태 확인
 {"name":"BuildProject","arguments":{...}}
 ```
 
+#### 클라이언트 수명 주기: Close vs Abort
+- `Close()`: graceful 종료 — stdin pipe를 닫고 child process가 자연 종료될 때까지 대기
+- `Abort()`: 강제 종료 — stdin pipe를 닫고 child process에 `SIGKILL` 전송 후 대기
+- 최상위 `ListTools`/`CallTool`은 성공 시 `Close()`, context 취소 시 `Abort()` 사용
+
 #### unsupported server request
 - client는 server-initiated request를 지원하지 않음
-- `Method not found` error 반환 후 실패
+- 서버가 request(method + id 모두 포함)를 보내면 `-32601 Method not found`로 응답하고 현재 호출을 실패 처리
+- 서버 notification(id 없는 method)은 무시
 
 ### 7.3 MCP stdio server
 #### supported methods
 - `initialize`
+- `ping`
 - `notifications/initialized`
 - `notifications/cancelled`
 - `tools/list`
 - `tools/call`
+
+#### ping
+- 빈 result object 반환: `{}`
+- health check 용도로 사용 가능
+
+#### 에러 코드
+
+| 코드 | 메시지 | 발생 시점 |
+|------|---------|----------|
+| `-32600` | Invalid Request | notification이 아닌 메시지에서 ID가 없고 method가 비어있을 때 |
+| `-32600` | request id is already in progress | 동일 request ID로 이전 요청이 아직 진행 중일 때 |
+| `-32601` | Method not found | 알 수 없는 method이거나 적용 불가한 시점의 요청 |
+| `-32602` | Unsupported protocol version | 지원 목록에 없는 버전으로 `initialize` 시도 |
+| `-32602` | (param decode error) | `tools/call`의 params가 유효하지 않을 때 (누락/형식 오류) |
+| `-32603` | (internal error message) | `tools/list` 또는 `tools/call` handler 내부 실패 |
 
 #### unsupported version response 예
 ```json
@@ -746,7 +802,7 @@ LaunchAgent 설치/실행/세션 상태 확인
     "message": "Unsupported protocol version",
     "data": {
       "requested": "2099-01-01",
-      "supported": ["2025-06-18","2025-03-26","2024-11-05"]
+      "supported": ["2025-11-25","2025-06-18","2025-03-26","2024-11-05"]
     }
   }
 }
@@ -801,7 +857,7 @@ brew install oozoofrog/tap/xcodecli
 #### GitHub 직접 설치
 ```bash
 curl -fsSL https://raw.githubusercontent.com/oozoofrog/xcodecli/main/scripts/install.sh | bash
-curl -fsSL https://raw.githubusercontent.com/oozoofrog/xcodecli/main/scripts/install.sh | bash -s -- --ref v0.5.2
+curl -fsSL https://raw.githubusercontent.com/oozoofrog/xcodecli/main/scripts/install.sh | bash -s -- --ref v0.5.4
 ```
 
 #### 로컬 checkout 설치

@@ -1,6 +1,6 @@
 # xcodecli Implementation Specification
 
-> Baseline version: `v0.5.2`
+> Baseline version: `v0.5.4`
 >
 > This document describes `xcodecli` at a level detailed enough to reimplement it in another language, including its public CLI contract, internal architecture, protocols, persistence rules, installation flow, release flow, and operational assumptions.
 >
@@ -116,6 +116,21 @@
   - Environment diagnostics report generation
 - `internal/update`
   - Self-update orchestration for Homebrew and direct installs
+
+### 3.4 Pooled Session Management
+The agent server maintains a map of pooled MCP sessions keyed by a composite key:
+
+#### Session key
+```go
+sessionKey = {XcodePID, SessionID, DeveloperDir}
+```
+Different combinations create separate backend `mcpbridge` processes, allowing multiplexing across different Xcode instances or sessions.
+
+#### Session lifecycle
+1. **Prepare**: `prepareSession(key)` looks up or creates a `pooledSession` for the key, increments `inFlight`, and clears the `retireWhenIdle` flag. Any other sessions with `inFlight == 0` are removed from the pool and returned for async abort.
+2. **Ensure client**: on first request for a session, `ensureClient()` spawns a new `xcrun mcpbridge` subprocess, applies environment overrides (`MCP_XCODE_PID`, `MCP_XCODE_SESSION_ID`, `DEVELOPER_DIR`), and runs MCP initialization.
+3. **Finish**: `finishSession(pooled)` decrements `inFlight`. If `inFlight` reaches zero and `retireWhenIdle` is set, the session is removed from the pool and aborted asynchronously.
+4. **Discard on failure**: `discardClientLocked(pooled)` force-aborts the current client and sets it to nil, so the next request will create a fresh subprocess.
 
 ### 3.3 Runtime Topologies
 #### `bridge`
@@ -255,8 +270,8 @@ xcodecli --version
 ```
 
 #### Output
-- release build: `xcodecli v0.5.2`
-- dev build: `xcodecli v0.5.2 (dev)`
+- release build: `xcodecli v0.5.4`
+- dev build: `xcodecli v0.5.4 (dev)`
 
 
 ### 6.4 `update`
@@ -278,8 +293,8 @@ xcodecli update
 7. Verify the new binary with `version` output.
 
 #### Output examples
-- already current via Homebrew: `xcodecli is already up to date via Homebrew (v0.5.2)`
-- updated direct install: `updated xcodecli: v0.5.1 -> v0.5.2`
+- already current via Homebrew: `xcodecli is already up to date via Homebrew (v0.5.4)`
+- updated direct install: `updated xcodecli: v0.5.1 -> v0.5.4`
 
 #### Notes
 - Any non-Homebrew path is treated as a direct install.
@@ -339,11 +354,12 @@ Input example:
   "jsonrpc": "2.0",
   "id": 1,
   "method": "initialize",
-  "params": {"protocolVersion": "2025-06-18"}
+  "params": {"protocolVersion": "2025-11-25"}
 }
 ```
 
 Supported versions:
+- `2025-11-25`
 - `2025-06-18`
 - `2025-03-26`
 - `2024-11-05`
@@ -351,6 +367,19 @@ Supported versions:
 Response rules:
 - If the version is supported, echo it back as `protocolVersion`
 - If unsupported, return `-32602` with `{requested, supported}` in `data`
+
+Response example (success):
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "result": {
+    "protocolVersion": "2025-11-25",
+    "capabilities": {"tools": {}},
+    "serverInfo": {"name": "xcodecli", "version": "v0.5.4"}
+  }
+}
+```
 
 ##### notifications/initialized
 - No response
@@ -697,6 +726,11 @@ Transport:
 ```
 
 ### 7.2 MCP stdio client
+
+#### Request protocol version
+- The client requests `"2025-11-25"` by default (`requestProtocolVersion` constant)
+- The server may negotiate down to any version in the supported list
+
 #### initialize request
 ```json
 {
@@ -704,7 +738,7 @@ Transport:
   "id": 1,
   "method": "initialize",
   "params": {
-    "protocolVersion": "2025-06-18",
+    "protocolVersion": "2025-11-25",
     "capabilities": {},
     "clientInfo": {"name":"xcodecli","version":"dev"}
   }
@@ -724,17 +758,39 @@ Transport:
 {"name":"BuildProject","arguments":{...}}
 ```
 
+#### Client lifecycle: Close vs Abort
+- `Close()`: graceful shutdown — closes stdin pipe, waits for the child process to exit naturally
+- `Abort()`: forced shutdown — closes stdin pipe, sends `SIGKILL` to the child process, then waits
+- Top-level `ListTools`/`CallTool` use `Close()` on success, `Abort()` on context cancellation
+
 #### Unsupported server request behavior
 - The client does not support server-initiated requests
-- Returns `Method not found` and fails the call
+- If the server sends a request (has both `method` and `id`), the client responds with `-32601 Method not found` and fails the current call
+- Server notifications (method without id) are silently ignored
 
 ### 7.3 MCP stdio server
 #### Supported methods
 - `initialize`
+- `ping`
 - `notifications/initialized`
 - `notifications/cancelled`
 - `tools/list`
 - `tools/call`
+
+#### ping
+- Returns an empty result object: `{}`
+- Can be used as a health check
+
+#### Error codes
+
+| Code | Message | When |
+|------|---------|------|
+| `-32600` | Invalid Request | Missing ID on a non-notification message with empty method |
+| `-32600` | request id is already in progress | Duplicate request ID while a previous request with the same ID is still running |
+| `-32601` | Method not found | Unknown method, or request sent before/after `initialize` when not applicable |
+| `-32602` | Unsupported protocol version | `initialize` with a version not in the supported list |
+| `-32602` | (param decode error) | `tools/call` with invalid params (e.g., missing or malformed JSON) |
+| `-32603` | (internal error message) | `tools/list` or `tools/call` handler failure |
 
 #### Unsupported version response example
 ```json
@@ -746,7 +802,7 @@ Transport:
     "message": "Unsupported protocol version",
     "data": {
       "requested": "2099-01-01",
-      "supported": ["2025-06-18","2025-03-26","2024-11-05"]
+      "supported": ["2025-11-25","2025-06-18","2025-03-26","2024-11-05"]
     }
   }
 }
@@ -801,7 +857,7 @@ brew install oozoofrog/tap/xcodecli
 #### Direct GitHub install
 ```bash
 curl -fsSL https://raw.githubusercontent.com/oozoofrog/xcodecli/main/scripts/install.sh | bash
-curl -fsSL https://raw.githubusercontent.com/oozoofrog/xcodecli/main/scripts/install.sh | bash -s -- --ref v0.5.2
+curl -fsSL https://raw.githubusercontent.com/oozoofrog/xcodecli/main/scripts/install.sh | bash -s -- --ref v0.5.4
 ```
 
 #### Local checkout install

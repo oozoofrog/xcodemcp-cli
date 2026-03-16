@@ -31,7 +31,7 @@ curl -fsSL https://raw.githubusercontent.com/oozoofrog/xcodecli/main/scripts/ins
 Install a specific tag or branch:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/oozoofrog/xcodecli/main/scripts/install.sh | bash -s -- --ref v0.5.2
+curl -fsSL https://raw.githubusercontent.com/oozoofrog/xcodecli/main/scripts/install.sh | bash -s -- --ref v0.5.4
 curl -fsSL https://raw.githubusercontent.com/oozoofrog/xcodecli/main/scripts/install.sh | bash -s -- --ref main
 ```
 
@@ -81,7 +81,7 @@ You can also override the package or output path:
 ```bash
 OUTPUT=.tmp/xcodecli ./scripts/build.sh
 PACKAGE=./cmd/xcodecli ./scripts/build.sh
-VERSION=v0.5.2 ./scripts/build.sh
+VERSION=v0.5.4 ./scripts/build.sh
 ```
 
 ## Usage

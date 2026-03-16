@@ -13,6 +13,8 @@
 ## Key Files
 - `agent-quickstart.md`: first-time discovery path for agents and automation using `xcodecli`.
 - `releasing.md`: canonical release, GitHub Release, and Homebrew flow.
+- `implementation-spec.md`: full technical contract for reimplementation and agent reference (English).
+- `implementation-spec.kr.md`: Korean translation of `implementation-spec.md`.
 
 ## Local Rules
 - Keep these docs user-facing and procedural.

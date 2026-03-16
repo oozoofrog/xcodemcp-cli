@@ -7,7 +7,7 @@
    - `go test ./...`
    - `./scripts/build.sh`
    - `./xcodecli version`
-3. Create and push an annotated tag like `v0.5.2`.
+3. Create and push an annotated tag like `v0.5.4`.
 4. Publish the GitHub Release for that tag.
 5. The Homebrew release workflow updates the shared `oozoofrog/homebrew-tap` repository automatically.
 
@@ -33,19 +33,19 @@ The automation path is:
 Use this if the release workflow fails or before publishing a new version:
 
 ```bash
-./scripts/release_homebrew.sh v0.5.2 --tap-dir .tmp/homebrew-tap --dry-run
+./scripts/release_homebrew.sh v0.5.4 --tap-dir .tmp/homebrew-tap --dry-run
 ```
 
 To commit locally in the tap repo without pushing:
 
 ```bash
-./scripts/release_homebrew.sh v0.5.2 --tap-dir .tmp/homebrew-tap
+./scripts/release_homebrew.sh v0.5.4 --tap-dir .tmp/homebrew-tap
 ```
 
 To clone the tap automatically and push the update:
 
 ```bash
-HOMEBREW_TAP_GITHUB_TOKEN=... ./scripts/release_homebrew.sh v0.5.2 --push
+HOMEBREW_TAP_GITHUB_TOKEN=... ./scripts/release_homebrew.sh v0.5.4 --push
 ```
 
 ## Required GitHub secret
