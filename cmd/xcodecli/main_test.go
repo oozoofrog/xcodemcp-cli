@@ -946,6 +946,106 @@ func TestRunAgentCommandsDoNotCreatePersistentSession(t *testing.T) {
 	})
 }
 
+func TestResolveEffectiveOptionsSuccess(t *testing.T) {
+	withStubs(t, func() {
+		oldSessionPathFunc := defaultSessionPathFunc
+		sessionPath := filepath.Join(t.TempDir(), "session-id")
+		defaultSessionPathFunc = func() (string, error) { return sessionPath, nil }
+		defer func() { defaultSessionPathFunc = oldSessionPathFunc }()
+
+		cfg := cliConfig{
+			XcodePID:  "12345",
+			SessionID: "11111111-1111-1111-1111-111111111111",
+		}
+		resolved, err := resolveEffectiveOptions(os.Environ(), cfg)
+		if err != nil {
+			t.Fatalf("resolveEffectiveOptions returned error: %v", err)
+		}
+		if resolved.XcodePID != "12345" {
+			t.Fatalf("XcodePID = %q, want 12345", resolved.XcodePID)
+		}
+		if resolved.SessionID != "11111111-1111-1111-1111-111111111111" {
+			t.Fatalf("SessionID = %q, want explicit UUID", resolved.SessionID)
+		}
+		if resolved.SessionSource != bridge.SessionSourceExplicit {
+			t.Fatalf("SessionSource = %q, want explicit", resolved.SessionSource)
+		}
+	})
+}
+
+func TestPreflightInvalidPIDRejectsToolsList(t *testing.T) {
+	withStubs(t, func() {
+		var stdout strings.Builder
+		var stderr strings.Builder
+		code := run(context.Background(), []string{"tools", "list", "--json", "--xcode-pid", "0"}, strings.NewReader(""), &stdout, &stderr, os.Environ())
+		if code != 1 {
+			t.Fatalf("exit code = %d, want 1", code)
+		}
+		if !strings.Contains(stderr.String(), "MCP_XCODE_PID must be a positive integer") {
+			t.Fatalf("stderr = %q, want PID validation error", stderr.String())
+		}
+	})
+}
+
+func TestPreflightInvalidUUIDRejectsToolCall(t *testing.T) {
+	withStubs(t, func() {
+		var stdout strings.Builder
+		var stderr strings.Builder
+		code := run(context.Background(), []string{"tool", "call", "XcodeRead", "--json", "{}", "--session-id", "not-a-uuid"}, strings.NewReader(""), &stdout, &stderr, os.Environ())
+		if code != 1 {
+			t.Fatalf("exit code = %d, want 1", code)
+		}
+		if !strings.Contains(stderr.String(), "MCP_XCODE_SESSION_ID must be a UUID") {
+			t.Fatalf("stderr = %q, want UUID validation error", stderr.String())
+		}
+	})
+}
+
+func TestResolveEffectiveOptionsDebugLogOutput(t *testing.T) {
+	withStubs(t, func() {
+		oldSessionPathFunc := defaultSessionPathFunc
+		sessionPath := filepath.Join(t.TempDir(), "session-id")
+		defaultSessionPathFunc = func() (string, error) { return sessionPath, nil }
+		defer func() { defaultSessionPathFunc = oldSessionPathFunc }()
+
+		cfg := cliConfig{
+			Debug:     true,
+			SessionID: "22222222-2222-2222-2222-222222222222",
+		}
+		resolved, err := resolveEffectiveOptions(os.Environ(), cfg)
+		if err != nil {
+			t.Fatalf("resolveEffectiveOptions returned error: %v", err)
+		}
+
+		var stderr strings.Builder
+		logResolvedSession(&stderr, resolved)
+		if !strings.Contains(stderr.String(), "[debug]") {
+			t.Fatalf("debug output missing [debug] prefix: %q", stderr.String())
+		}
+	})
+}
+
+func TestResolveEffectiveOptionsNoDebugLogWhenDisabled(t *testing.T) {
+	withStubs(t, func() {
+		oldSessionPathFunc := defaultSessionPathFunc
+		sessionPath := filepath.Join(t.TempDir(), "session-id")
+		defaultSessionPathFunc = func() (string, error) { return sessionPath, nil }
+		defer func() { defaultSessionPathFunc = oldSessionPathFunc }()
+
+		cfg := cliConfig{Debug: false}
+		resolved, err := resolveEffectiveOptions(os.Environ(), cfg)
+		if err != nil {
+			t.Fatalf("resolveEffectiveOptions returned error: %v", err)
+		}
+
+		// When debug=false, the caller skips logResolvedSession.
+		// Verify the resolved options are still valid.
+		if resolved.SessionID == "" {
+			t.Fatal("expected generated session ID when none provided")
+		}
+	})
+}
+
 func withStubs(t *testing.T, fn func()) {
 	t.Helper()
 	oldConfig := defaultAgentConfigFunc
