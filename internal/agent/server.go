@@ -185,7 +185,8 @@ func (s *server) listTools(parentCtx context.Context, req rpcRequest) ([]map[str
 	if err != nil {
 		return nil, err
 	}
-	return result.([]map[string]any), nil
+	tools, _ := result.([]map[string]any)
+	return tools, nil
 }
 
 func (s *server) callTool(parentCtx context.Context, req rpcRequest) (mcp.CallResult, error) {
@@ -195,7 +196,8 @@ func (s *server) callTool(parentCtx context.Context, req rpcRequest) (mcp.CallRe
 	if err != nil {
 		return mcp.CallResult{}, err
 	}
-	return result.(mcp.CallResult), nil
+	cr, _ := result.(mcp.CallResult)
+	return cr, nil
 }
 
 func (s *server) runSessionOp(parentCtx context.Context, req rpcRequest, fn func(sessionClient) (any, error)) (any, error) {

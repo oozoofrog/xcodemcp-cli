@@ -7,7 +7,8 @@ import (
 )
 
 // IsTemporaryGoBuildExecutable reports whether path looks like a temporary
-// executable produced by "go run" or "go test" under the system temp directory.
+// "xcodecli" executable produced by "go run" under the system temp directory.
+// It matches paths of the form <tempDir>/go-build.../*/exe/xcodecli.
 // tempDirFunc should return the system's temporary directory (typically os.TempDir).
 func IsTemporaryGoBuildExecutable(path string, tempDirFunc func() string) bool {
 	if strings.TrimSpace(path) == "" {
@@ -43,6 +44,8 @@ func NormalizePrivatePrefix(path string) string {
 }
 
 // PathWithinBase reports whether path is equal to or a descendant of base.
+// Both path and base should be cleaned (e.g. via filepath.Clean) before calling;
+// the function does not normalize its inputs.
 func PathWithinBase(path, base string) bool {
 	if path == base {
 		return true

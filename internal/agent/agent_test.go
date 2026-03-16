@@ -839,6 +839,75 @@ func TestUninstallRemovesLaunchAgentArtifacts(t *testing.T) {
 	}
 }
 
+func TestHandleRPCError(t *testing.T) {
+	t.Run("serverResponseError passes through", func(t *testing.T) {
+		ctx := context.Background()
+		inputErr := serverResponseError{message: "backend boom"}
+		effectiveReq := rpcRequest{TimeoutMS: 1000}
+		origReq := rpcRequest{}
+
+		got := handleRPCError(ctx, inputErr, effectiveReq, origReq)
+
+		var serverErr serverResponseError
+		if !errors.As(got, &serverErr) {
+			t.Fatalf("expected serverResponseError, got %T: %v", got, got)
+		}
+		if serverErr.message != "backend boom" {
+			t.Fatalf("message = %q, want %q", serverErr.message, "backend boom")
+		}
+	})
+
+	t.Run("unavailableError connect with cancelled context", func(t *testing.T) {
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel()
+		inputErr := unavailableError{stage: "connect", err: errors.New("connection refused")}
+		effectiveReq := rpcRequest{TimeoutMS: 1000}
+		origReq := rpcRequest{}
+
+		got := handleRPCError(ctx, inputErr, effectiveReq, origReq)
+
+		if got == nil {
+			t.Fatal("expected non-nil error")
+		}
+		if !strings.Contains(got.Error(), "connecting to the LaunchAgent after startup") {
+			t.Fatalf("expected error to contain %q, got %q", "connecting to the LaunchAgent after startup", got.Error())
+		}
+	})
+
+	t.Run("generic error with cancelled context", func(t *testing.T) {
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel()
+		inputErr := errors.New("read failed")
+		effectiveReq := rpcRequest{TimeoutMS: 1000}
+		origReq := rpcRequest{Method: "tools/call", ToolName: "BuildProject"}
+
+		got := handleRPCError(ctx, inputErr, effectiveReq, origReq)
+
+		if got == nil {
+			t.Fatal("expected non-nil error")
+		}
+		if !strings.Contains(got.Error(), "while calling BuildProject") {
+			t.Fatalf("expected error to contain %q, got %q", "while calling BuildProject", got.Error())
+		}
+	})
+
+	t.Run("generic error without cancelled context passes through", func(t *testing.T) {
+		ctx := context.Background()
+		inputErr := errors.New("read failed")
+		effectiveReq := rpcRequest{TimeoutMS: 1000}
+		origReq := rpcRequest{}
+
+		got := handleRPCError(ctx, inputErr, effectiveReq, origReq)
+
+		if got == nil {
+			t.Fatal("expected non-nil error")
+		}
+		if got.Error() != "read failed" {
+			t.Fatalf("error = %q, want %q", got.Error(), "read failed")
+		}
+	})
+}
+
 func testClientConfig(paths Paths, spawnFile string, idleTimeout time.Duration, launchd Launchd) Config {
 	return Config{
 		Paths:       paths,

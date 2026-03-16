@@ -88,7 +88,8 @@ func ListTools(ctx context.Context, cfg Config) ([]map[string]any, error) {
 	if err != nil {
 		return nil, err
 	}
-	return result.([]map[string]any), nil
+	tools, _ := result.([]map[string]any)
+	return tools, nil
 }
 
 func CallTool(ctx context.Context, cfg Config, name string, arguments map[string]any) (CallResult, error) {
@@ -98,7 +99,8 @@ func CallTool(ctx context.Context, cfg Config, name string, arguments map[string
 	if err != nil {
 		return CallResult{}, err
 	}
-	return result.(CallResult), nil
+	cr, _ := result.(CallResult)
+	return cr, nil
 }
 
 func runWithClient(ctx context.Context, cfg Config, fn func(*Client) (any, error)) (any, error) {
