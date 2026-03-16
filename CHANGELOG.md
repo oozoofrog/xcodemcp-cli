@@ -6,6 +6,10 @@ The format is inspired by [Keep a Changelog](https://keepachangelog.com/en/1.1.0
 
 ## [Unreleased]
 
+## [0.5.4] - 2026-03-16
+### Changed
+- Cut a follow-up patch release to verify the Homebrew upgrade path exercised by `xcodecli update`.
+
 ## [0.5.3] - 2026-03-16
 ### Added
 - `xcodecli update` for upgrading an installed `xcodecli` binary in place, using Homebrew when appropriate and otherwise rebuilding the latest GitHub release over the current executable.
