@@ -6,6 +6,10 @@ The format is inspired by [Keep a Changelog](https://keepachangelog.com/en/1.1.0
 
 ## [Unreleased]
 
+## [0.5.2] - 2026-03-16
+### Fixed
+- Rebuilt release tags to remove personal identity and AI co-author metadata from git history.
+
 ## [0.5.0] - 2026-03-16
 ### Added
 - `xcodecli serve`, a stdio MCP server mode that lets MCP clients talk to `xcodecli` directly while reusing the LaunchAgent-backed pooled `mcpbridge` runtime.

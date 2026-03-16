@@ -2,7 +2,7 @@ package main
 
 import "strings"
 
-const sourceVersion = "v0.5.1"
+const sourceVersion = "v0.5.2"
 
 var cliVersion = sourceVersion
 var cliBuildChannel = "dev"
