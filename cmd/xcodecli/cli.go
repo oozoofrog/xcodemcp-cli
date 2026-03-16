@@ -15,6 +15,7 @@ type commandName string
 
 const (
 	commandVersion        commandName = "version"
+	commandUpdate         commandName = "update"
 	commandBridge         commandName = "bridge"
 	commandServe          commandName = "serve"
 	commandDoctor         commandName = "doctor"
@@ -60,6 +61,10 @@ func parseCLI(args []string) (cliConfig, string, error) {
 	switch args[0] {
 	case "version", "--version":
 		return cliConfig{Command: commandVersion}, versionUsage(), nil
+	case string(commandUpdate):
+		cfg, err := parseUpdateFlags("xcodecli update", args[1:])
+		cfg.Command = commandUpdate
+		return cfg, updateUsage(), err
 	case "help", "-h", "--help":
 		return parseHelp(args[1:])
 	case string(commandBridge):
@@ -99,6 +104,8 @@ func parseHelp(args []string) (cliConfig, string, error) {
 	switch args[0] {
 	case string(commandVersion):
 		return cliConfig{Command: commandVersion}, versionUsage(), errUsageRequested
+	case string(commandUpdate):
+		return cliConfig{Command: commandUpdate}, updateUsage(), errUsageRequested
 	case string(commandBridge):
 		return cliConfig{}, bridgeUsage(), errUsageRequested
 	case string(commandServe):
@@ -251,6 +258,24 @@ func parseBridgeFlags(name string, args []string) (cliConfig, error) {
 	fs.StringVar(&cfg.XcodePID, "xcode-pid", "", "")
 	fs.StringVar(&cfg.SessionID, "session-id", "", "")
 	fs.BoolVar(&cfg.Debug, "debug", false, "")
+	fs.BoolVar(&help, "h", false, "")
+	fs.BoolVar(&help, "help", false, "")
+	if err := fs.Parse(args); err != nil {
+		return cliConfig{}, err
+	}
+	if help {
+		return cliConfig{}, errUsageRequested
+	}
+	if fs.NArg() != 0 {
+		return cliConfig{}, fmt.Errorf("unexpected positional arguments: %s", strings.Join(fs.Args(), " "))
+	}
+	return cfg, nil
+}
+
+func parseUpdateFlags(name string, args []string) (cliConfig, error) {
+	fs := newFlagSet(name)
+	cfg := cliConfig{Command: commandUpdate}
+	help := false
 	fs.BoolVar(&help, "h", false, "")
 	fs.BoolVar(&help, "help", false, "")
 	if err := fs.Parse(args); err != nil {
@@ -691,6 +716,7 @@ RUNTIME MODEL:
 USAGE:
   xcodecli version
   xcodecli --version
+  xcodecli update
   xcodecli [--xcode-pid PID] [--session-id UUID] [--debug]
   xcodecli bridge [--xcode-pid PID] [--session-id UUID] [--debug]
   xcodecli serve [--xcode-pid PID] [--session-id UUID] [--debug]
@@ -710,6 +736,7 @@ USAGE:
 
 COMMANDS:
   version   Print the current xcodecli version
+  update    Update the installed xcodecli binary
   bridge    Run raw STDIO passthrough to xcrun mcpbridge
   serve     Run a stdio MCP server backed by the LaunchAgent runtime
   doctor    Run environment diagnostics
@@ -729,6 +756,15 @@ Use this in bug reports, release verification, or install checks.
 USAGE:
   xcodecli version
   xcodecli --version
+`
+}
+
+func updateUsage() string {
+	return `update upgrades the installed xcodecli binary in place.
+Homebrew installs use "brew upgrade oozoofrog/tap/xcodecli"; other installs rebuild the latest GitHub release and replace the current executable.
+
+USAGE:
+  xcodecli update
 `
 }
 

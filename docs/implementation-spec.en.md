@@ -1,6 +1,6 @@
 # xcodecli Implementation Specification
 
-> Baseline version: `v0.5.0`
+> Baseline version: `v0.5.2`
 >
 > This document describes `xcodecli` at a level detailed enough to reimplement it in another language, including its public CLI contract, internal architecture, protocols, persistence rules, installation flow, release flow, and operational assumptions.
 >
@@ -114,6 +114,8 @@
   - MCP stdio server (`serve` implementation)
 - `internal/doctor`
   - Environment diagnostics report generation
+- `internal/update`
+  - Self-update orchestration for Homebrew and direct installs
 
 ### 3.3 Runtime Topologies
 #### `bridge`
@@ -235,6 +237,7 @@ xcodecli --xcode-pid 123 --session-id ... --debug
 
 ### 6.2 Command List
 - `version`
+- `update`
 - `bridge`
 - `serve`
 - `doctor`
@@ -252,10 +255,37 @@ xcodecli --version
 ```
 
 #### Output
-- release build: `xcodecli v0.5.0`
-- dev build: `xcodecli v0.5.0 (dev)`
+- release build: `xcodecli v0.5.2`
+- dev build: `xcodecli v0.5.2 (dev)`
 
-### 6.4 `bridge`
+
+### 6.4 `update`
+#### Usage
+```bash
+xcodecli update
+```
+
+#### Flags
+- `-h`, `--help`
+
+#### Algorithm
+1. Resolve the current `xcodecli` executable path.
+2. Fail if the path looks like a temporary Go build output.
+3. Detect whether the binary is Homebrew-managed via `brew --prefix oozoofrog/tap/xcodecli`.
+4. If Homebrew-managed, run `brew upgrade oozoofrog/tap/xcodecli`.
+5. Otherwise query the latest semantic-version release tag with `git ls-remote --refs --tags`.
+6. Download that tag tarball, build a release binary, and replace the current executable.
+7. Verify the new binary with `version` output.
+
+#### Output examples
+- already current via Homebrew: `xcodecli is already up to date via Homebrew (v0.5.2)`
+- updated direct install: `updated xcodecli: v0.5.1 -> v0.5.2`
+
+#### Notes
+- Any non-Homebrew path is treated as a direct install.
+- Direct-install updates require `curl`, `git`, `tar`, and `go` on PATH.
+
+### 6.5 `bridge`
 #### Usage
 ```bash
 xcodecli bridge [--xcode-pid PID] [--session-id UUID] [--debug]
@@ -283,7 +313,7 @@ xcodecli [--xcode-pid PID] [--session-id UUID] [--debug]
 - child exit code is propagated
 - internal wrapper failures return `1`
 
-### 6.5 `serve`
+### 6.6 `serve`
 #### Usage
 ```bash
 xcodecli serve [--xcode-pid PID] [--session-id UUID] [--debug]
@@ -361,7 +391,7 @@ Response payload:
 - normal server termination: `0`
 - validation or serve runtime failure: `1`
 
-### 6.6 `doctor`
+### 6.7 `doctor`
 #### Usage
 ```bash
 xcodecli doctor [--json] [--xcode-pid PID] [--session-id UUID]
@@ -396,7 +426,7 @@ xcodecli doctor [--json] [--xcode-pid PID] [--session-id UUID]
 - `success == true` → `0`
 - otherwise `1`
 
-### 6.7 `mcp`
+### 6.8 `mcp`
 #### Subcommands
 - `mcp config`
 - `mcp codex`
@@ -485,7 +515,7 @@ gemini mcp add -s <scope> <name> <xcodecli path> serve|bridge
 - Temporary Go build binaries must be rejected as registration targets
 - Codex does not support `--scope`
 
-### 6.8 `tools list`
+### 6.9 `tools list`
 #### Usage
 ```bash
 xcodecli tools list [--json] [--timeout 60s] [--xcode-pid PID] [--session-id UUID] [--debug]
@@ -499,7 +529,7 @@ xcodecli tools list [--json] [--timeout 60s] [--xcode-pid PID] [--session-id UUI
 - success `0`
 - failure `1`
 
-### 6.9 `tool inspect`
+### 6.10 `tool inspect`
 #### Usage
 ```bash
 xcodecli tool inspect <name> [--json] [--timeout 60s] [--xcode-pid PID] [--session-id UUID] [--debug]
@@ -516,7 +546,7 @@ inputSchema:
 #### JSON output
 - Full tool object
 
-### 6.10 `tool call`
+### 6.11 `tool call`
 #### Usage
 ```bash
 xcodecli tool call <name> (--json '{...}' | --json @payload.json | --json-stdin) [--timeout DURATION] [--xcode-pid PID] [--session-id UUID] [--debug]
@@ -536,7 +566,7 @@ xcodecli tool call <name> (--json '{...}' | --json @payload.json | --json-stdin)
 - Always writes a JSON result object
 - Exit code becomes `1` when `result.IsError == true`
 
-### 6.11 `agent guide`
+### 6.12 `agent guide`
 #### Purpose
 Classify a user request into a workflow family and produce next commands using live context
 
@@ -568,7 +598,7 @@ Classify a user request into a workflow family and produce next commands using l
 }
 ```
 
-### 6.12 `agent demo`
+### 6.13 `agent demo`
 #### Purpose
 Safe onboarding demo for first-time use
 
@@ -584,7 +614,7 @@ Safe onboarding demo for first-time use
 - windows demo attempted
 - windows demo ok
 
-### 6.13 `agent status`
+### 6.14 `agent status`
 #### Purpose
 Inspect LaunchAgent installation / runtime / session state
 
@@ -607,15 +637,15 @@ Inspect LaunchAgent installation / runtime / session state
 }
 ```
 
-### 6.14 `agent stop`
+### 6.15 `agent stop`
 - Send stop RPC
 - Output: `stopped LaunchAgent process if it was running`
 
-### 6.15 `agent uninstall`
+### 6.16 `agent uninstall`
 - Remove plist/socket/pid/log/support dir
 - Output: `removed LaunchAgent plist and local agent runtime files`
 
-### 6.16 `agent run`
+### 6.17 `agent run`
 - Internal-only entrypoint
 - Requires `--launch-agent`
 - Default `--idle-timeout` is `24h`
@@ -771,7 +801,7 @@ brew install oozoofrog/tap/xcodecli
 #### Direct GitHub install
 ```bash
 curl -fsSL https://raw.githubusercontent.com/oozoofrog/xcodecli/main/scripts/install.sh | bash
-curl -fsSL https://raw.githubusercontent.com/oozoofrog/xcodecli/main/scripts/install.sh | bash -s -- --ref v0.5.0
+curl -fsSL https://raw.githubusercontent.com/oozoofrog/xcodecli/main/scripts/install.sh | bash -s -- --ref v0.5.2
 ```
 
 #### Local checkout install

@@ -15,6 +15,7 @@ import (
 	"github.com/oozoofrog/xcodecli/internal/bridge"
 	"github.com/oozoofrog/xcodecli/internal/doctor"
 	"github.com/oozoofrog/xcodecli/internal/mcp"
+	selfupdate "github.com/oozoofrog/xcodecli/internal/update"
 )
 
 func TestParseCLIDefaultBridge(t *testing.T) {
@@ -53,6 +54,19 @@ func TestParseCLIVersionFlag(t *testing.T) {
 	}
 	if cfg.Command != commandVersion {
 		t.Fatalf("command = %q, want %q", cfg.Command, commandVersion)
+	}
+}
+
+func TestParseCLIUpdateCommand(t *testing.T) {
+	cfg, usage, err := parseCLI([]string{"update"})
+	if err != nil {
+		t.Fatalf("parseCLI returned error: %v", err)
+	}
+	if cfg.Command != commandUpdate {
+		t.Fatalf("command = %q, want %q", cfg.Command, commandUpdate)
+	}
+	if !strings.Contains(usage, "xcodecli update") {
+		t.Fatalf("usage missing update help: %q", usage)
 	}
 }
 
@@ -228,7 +242,7 @@ func TestParseCLIHelp(t *testing.T) {
 func TestRootUsageIncludesHumanAndAgentGuidance(t *testing.T) {
 	withVersionState(t, "v9.9.9", "dev", func() {
 		usage := rootUsage()
-		for _, want := range []string{"xcodecli v9.9.9 (dev)", "START HERE:", "For humans:", "For agents:", "xcodecli version", "xcodecli serve", "xcodecli agent guide", "xcodecli agent demo", "xcodecli doctor --json", "xcodecli mcp codex", "xcodecli tool inspect <name> --json"} {
+		for _, want := range []string{"xcodecli v9.9.9 (dev)", "START HERE:", "For humans:", "For agents:", "xcodecli version", "xcodecli update", "xcodecli serve", "xcodecli agent guide", "xcodecli agent demo", "xcodecli doctor --json", "xcodecli mcp codex", "xcodecli tool inspect <name> --json"} {
 			if !strings.Contains(usage, want) {
 				t.Fatalf("root usage missing %q: %s", want, usage)
 			}
@@ -242,6 +256,13 @@ func TestVersionUsageMentionsVersionFlag(t *testing.T) {
 		if !strings.Contains(usage, want) {
 			t.Fatalf("version usage missing %q: %s", want, usage)
 		}
+	}
+}
+
+func TestUpdateUsageMentionsCommand(t *testing.T) {
+	usage := updateUsage()
+	if !strings.Contains(usage, "xcodecli update") {
+		t.Fatalf("update usage missing command: %s", usage)
 	}
 }
 
@@ -300,6 +321,55 @@ func TestRunVersionFlag(t *testing.T) {
 		}
 		if strings.TrimSpace(stdout.String()) != "xcodecli v1.2.3" {
 			t.Fatalf("stdout = %q, want version line", stdout.String())
+		}
+	})
+}
+
+func TestRunUpdateCommand(t *testing.T) {
+	withStubs(t, func() {
+		defaultSelfUpdateFunc = func(ctx context.Context, currentVersion string) (selfupdate.Result, error) {
+			if currentVersion != "v1.2.3" {
+				t.Fatalf("currentVersion = %q, want v1.2.3", currentVersion)
+			}
+			return selfupdate.Result{
+				Mode:           "direct",
+				CurrentVersion: "v1.2.3",
+				TargetVersion:  "v1.2.4",
+			}, nil
+		}
+		withVersionState(t, "v1.2.3", "release", func() {
+			var stdout strings.Builder
+			var stderr strings.Builder
+			code := run(context.Background(), []string{"update"}, strings.NewReader(""), &stdout, &stderr, os.Environ())
+			if code != 0 {
+				t.Fatalf("exit code = %d, want 0 (stderr=%q)", code, stderr.String())
+			}
+			if strings.TrimSpace(stdout.String()) != "updated xcodecli: v1.2.3 -> v1.2.4" {
+				t.Fatalf("stdout = %q, want update success line", stdout.String())
+			}
+			if stderr.String() != "" {
+				t.Fatalf("stderr = %q, want empty stderr", stderr.String())
+			}
+		})
+	})
+}
+
+func TestRunUpdateCommandFailure(t *testing.T) {
+	withStubs(t, func() {
+		defaultSelfUpdateFunc = func(ctx context.Context, currentVersion string) (selfupdate.Result, error) {
+			return selfupdate.Result{}, errors.New("update failed")
+		}
+		var stdout strings.Builder
+		var stderr strings.Builder
+		code := run(context.Background(), []string{"update"}, strings.NewReader(""), &stdout, &stderr, os.Environ())
+		if code != 1 {
+			t.Fatalf("exit code = %d, want 1", code)
+		}
+		if stdout.String() != "" {
+			t.Fatalf("stdout = %q, want empty stdout", stdout.String())
+		}
+		if !strings.Contains(stderr.String(), "update failed") {
+			t.Fatalf("stderr = %q, want update failure", stderr.String())
 		}
 	})
 }
@@ -881,6 +951,7 @@ func withStubs(t *testing.T, fn func()) {
 	oldConfig := defaultAgentConfigFunc
 	oldList := defaultToolsListFunc
 	oldCall := defaultToolCallFunc
+	oldSelfUpdate := defaultSelfUpdateFunc
 	oldExecutablePath := defaultExecutablePathFunc
 	oldMCPRunner := defaultMCPCommandRunner
 	oldServe := defaultMCPServeFunc
@@ -902,6 +973,9 @@ func withStubs(t *testing.T, fn func()) {
 	}
 	defaultToolCallFunc = func(ctx context.Context, cfg agent.Config, req agent.Request, toolName string, arguments map[string]any) (mcp.CallResult, error) {
 		return mcp.CallResult{}, errors.New("unexpected tool call")
+	}
+	defaultSelfUpdateFunc = func(ctx context.Context, currentVersion string) (selfupdate.Result, error) {
+		return selfupdate.Result{}, errors.New("unexpected self update call")
 	}
 	defaultExecutablePathFunc = func() (string, error) {
 		return "/tmp/xcodecli-test", nil
@@ -927,6 +1001,7 @@ func withStubs(t *testing.T, fn func()) {
 		defaultAgentConfigFunc = oldConfig
 		defaultToolsListFunc = oldList
 		defaultToolCallFunc = oldCall
+		defaultSelfUpdateFunc = oldSelfUpdate
 		defaultExecutablePathFunc = oldExecutablePath
 		defaultMCPCommandRunner = oldMCPRunner
 		defaultMCPServeFunc = oldServe

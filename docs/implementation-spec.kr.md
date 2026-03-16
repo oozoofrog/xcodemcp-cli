@@ -1,6 +1,6 @@
 # xcodecli 구현 명세서
 
-> Baseline version: `v0.5.0`
+> Baseline version: `v0.5.2`
 >
 > 이 문서는 `xcodecli`의 공개 기능, 내부 구조, 프로토콜, 설치/배포/운영 규칙을 **다른 언어에서도 재구현 가능한 수준**으로 정리한 기술 명세서입니다.
 >
@@ -114,6 +114,8 @@
   - MCP stdio server (`serve` 구현)
 - `internal/doctor`
   - 환경 진단 보고서 생성
+- `internal/update`
+  - Homebrew 및 직접 설치용 자기 업데이트 orchestration
 
 ### 3.3 런타임 토폴로지
 #### `bridge`
@@ -235,6 +237,7 @@ xcodecli --xcode-pid 123 --session-id ... --debug
 
 ### 6.2 명령 목록
 - `version`
+- `update`
 - `bridge`
 - `serve`
 - `doctor`
@@ -252,10 +255,37 @@ xcodecli --version
 ```
 
 #### 출력
-- release build: `xcodecli v0.5.0`
-- dev build: `xcodecli v0.5.0 (dev)`
+- release build: `xcodecli v0.5.2`
+- dev build: `xcodecli v0.5.2 (dev)`
 
-### 6.4 `bridge`
+
+### 6.4 `update`
+#### 사용법
+```bash
+xcodecli update
+```
+
+#### 플래그
+- `-h`, `--help`
+
+#### 동작 알고리즘
+1. 현재 실행 중인 `xcodecli` 바이너리 경로를 해석한다.
+2. 경로가 임시 Go build 산출물처럼 보이면 실패한다.
+3. `brew --prefix oozoofrog/tap/xcodecli`로 Homebrew 관리 설치인지 확인한다.
+4. Homebrew 설치면 `brew upgrade oozoofrog/tap/xcodecli`를 실행한다.
+5. Homebrew가 아니면 `git ls-remote --refs --tags`로 최신 semantic-version release tag를 찾는다.
+6. 해당 tag tarball을 내려받아 release 빌드를 수행한 뒤 현재 실행 파일을 교체한다.
+7. 새 바이너리의 `version` 출력을 확인한다.
+
+#### 출력 예
+- Homebrew 최신 상태: `xcodecli is already up to date via Homebrew (v0.5.2)`
+- 직접 설치 업데이트 완료: `updated xcodecli: v0.5.1 -> v0.5.2`
+
+#### 노트
+- Homebrew가 아닌 경로는 모두 직접 설치로 간주한다.
+- 직접 설치 업데이트에는 `curl`, `git`, `tar`, `go`가 필요하다.
+
+### 6.5 `bridge`
 #### 사용법
 ```bash
 xcodecli bridge [--xcode-pid PID] [--session-id UUID] [--debug]
@@ -283,7 +313,7 @@ xcodecli [--xcode-pid PID] [--session-id UUID] [--debug]
 - child exit code 전달
 - wrapper 내부 오류 시 `1`
 
-### 6.5 `serve`
+### 6.6 `serve`
 #### 사용법
 ```bash
 xcodecli serve [--xcode-pid PID] [--session-id UUID] [--debug]
@@ -361,7 +391,7 @@ xcodecli serve [--xcode-pid PID] [--session-id UUID] [--debug]
 - 정상 종료: `0`
 - validate/serve runtime 오류: `1`
 
-### 6.6 `doctor`
+### 6.7 `doctor`
 #### 사용법
 ```bash
 xcodecli doctor [--json] [--xcode-pid PID] [--session-id UUID]
@@ -396,7 +426,7 @@ xcodecli doctor [--json] [--xcode-pid PID] [--session-id UUID]
 - `success == true` → `0`
 - 아니면 `1`
 
-### 6.7 `mcp`
+### 6.8 `mcp`
 #### 서브커맨드
 - `mcp config`
 - `mcp codex`
@@ -485,7 +515,7 @@ gemini mcp add -s <scope> <name> <xcodecli path> serve|bridge
 - temp Go build binary 경로는 거부
 - Codex는 `--scope` 미지원
 
-### 6.8 `tools list`
+### 6.9 `tools list`
 #### 사용법
 ```bash
 xcodecli tools list [--json] [--timeout 60s] [--xcode-pid PID] [--session-id UUID] [--debug]
@@ -499,7 +529,7 @@ xcodecli tools list [--json] [--timeout 60s] [--xcode-pid PID] [--session-id UUI
 - 성공 `0`
 - 실패 `1`
 
-### 6.9 `tool inspect`
+### 6.10 `tool inspect`
 #### 사용법
 ```bash
 xcodecli tool inspect <name> [--json] [--timeout 60s] [--xcode-pid PID] [--session-id UUID] [--debug]
@@ -516,7 +546,7 @@ inputSchema:
 #### JSON 출력
 - tool object 전체
 
-### 6.10 `tool call`
+### 6.11 `tool call`
 #### 사용법
 ```bash
 xcodecli tool call <name> (--json '{...}' | --json @payload.json | --json-stdin) [--timeout DURATION] [--xcode-pid PID] [--session-id UUID] [--debug]
@@ -536,7 +566,7 @@ xcodecli tool call <name> (--json '{...}' | --json @payload.json | --json-stdin)
 - 항상 JSON result object
 - `result.IsError == true`면 exit code `1`
 
-### 6.11 `agent guide`
+### 6.12 `agent guide`
 #### 목적
 요청을 workflow family로 분류하고 라이브 컨텍스트를 반영한 next command를 제안
 
@@ -568,7 +598,7 @@ xcodecli tool call <name> (--json '{...}' | --json @payload.json | --json-stdin)
 }
 ```
 
-### 6.12 `agent demo`
+### 6.13 `agent demo`
 #### 목적
 첫 사용자를 위한 safe onboarding demo
 
@@ -584,7 +614,7 @@ xcodecli tool call <name> (--json '{...}' | --json @payload.json | --json-stdin)
 - windows demo attempted
 - windows demo ok
 
-### 6.13 `agent status`
+### 6.14 `agent status`
 #### 목적
 LaunchAgent 설치/실행/세션 상태 확인
 
@@ -607,15 +637,15 @@ LaunchAgent 설치/실행/세션 상태 확인
 }
 ```
 
-### 6.14 `agent stop`
+### 6.15 `agent stop`
 - stop RPC 전송
 - 출력: `stopped LaunchAgent process if it was running`
 
-### 6.15 `agent uninstall`
+### 6.16 `agent uninstall`
 - plist/socket/pid/log/support dir 제거
 - 출력: `removed LaunchAgent plist and local agent runtime files`
 
-### 6.16 `agent run`
+### 6.17 `agent run`
 - 내부 전용 entrypoint
 - `--launch-agent` 필수
 - `--idle-timeout` 기본 `24h`
@@ -771,7 +801,7 @@ brew install oozoofrog/tap/xcodecli
 #### GitHub 직접 설치
 ```bash
 curl -fsSL https://raw.githubusercontent.com/oozoofrog/xcodecli/main/scripts/install.sh | bash
-curl -fsSL https://raw.githubusercontent.com/oozoofrog/xcodecli/main/scripts/install.sh | bash -s -- --ref v0.5.0
+curl -fsSL https://raw.githubusercontent.com/oozoofrog/xcodecli/main/scripts/install.sh | bash -s -- --ref v0.5.2
 ```
 
 #### 로컬 checkout 설치

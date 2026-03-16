@@ -74,6 +74,8 @@ func run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.
 	}
 
 	switch cfg.Command {
+	case commandUpdate:
+		return runUpdate(ctx, stdout, stderr)
 	case commandDoctor:
 		resolved, err := resolveEffectiveOptions(env, cfg)
 		if err != nil {

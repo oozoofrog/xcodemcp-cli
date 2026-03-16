@@ -5,6 +5,8 @@ All notable changes to this project will be documented in this file.
 The format is inspired by [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses pre-1.0 semantic versioning tags.
 
 ## [Unreleased]
+### Added
+- `xcodecli update` for upgrading an installed `xcodecli` binary in place, using Homebrew when appropriate and otherwise rebuilding the latest GitHub release over the current executable.
 
 ## [0.5.2] - 2026-03-16
 ### Fixed
