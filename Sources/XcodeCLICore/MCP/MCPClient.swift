@@ -174,14 +174,29 @@ public actor MCPClient {
         try writeJSON(envelope)
     }
 
-    /// List available MCP tools.
+    /// List available MCP tools with cursor-based pagination.
     public func listTools() throws -> [JSONValue] {
-        let result = try request(method: "tools/list", params: .object([:]))
-        if case .object(let obj) = result,
-           case .array(let tools) = obj["tools"] {
-            return tools
+        var allTools: [JSONValue] = []
+        var cursor: String = ""
+
+        while true {
+            var params: [String: JSONValue] = [:]
+            if !cursor.isEmpty {
+                params["cursor"] = .string(cursor)
+            }
+            let result = try request(method: "tools/list", params: .object(params))
+            if case .object(let obj) = result {
+                if case .array(let tools) = obj["tools"] {
+                    allTools.append(contentsOf: tools)
+                }
+                if case .string(let nextCursor) = obj["nextCursor"], !nextCursor.isEmpty {
+                    cursor = nextCursor
+                    continue
+                }
+            }
+            break
         }
-        return []
+        return allTools
     }
 
     /// Call an MCP tool.

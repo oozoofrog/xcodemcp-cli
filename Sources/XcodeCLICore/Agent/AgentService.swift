@@ -1,5 +1,8 @@
 import Foundation
 
+/// Default idle timeout for agent sessions (24 hours, in nanoseconds for Go compatibility).
+public let defaultAgentIdleTimeoutNs: Int64 = 24 * 60 * 60 * 1_000_000_000
+
 /// Default idle timeout for agent sessions (24 hours).
 public let defaultAgentIdleTimeout: TimeInterval = 24 * 60 * 60
 

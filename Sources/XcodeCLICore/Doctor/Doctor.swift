@@ -114,7 +114,7 @@ public struct AgentStatus: Codable, Sendable {
     public var socketReachable: Bool
     public var running: Bool
     public var pid: Int
-    public var idleTimeout: Double // seconds
+    public var idleTimeoutNs: Int64 // nanoseconds (Go time.Duration compatible)
     public var backendSessions: Int
 
     public init(
@@ -122,7 +122,7 @@ public struct AgentStatus: Codable, Sendable {
         registeredBinary: String = "", currentBinary: String = "",
         binaryPathMatches: Bool = false, socketPath: String = "",
         socketReachable: Bool = false, running: Bool = false, pid: Int = 0,
-        idleTimeout: Double = 0, backendSessions: Int = 0
+        idleTimeoutNs: Int64 = 0, backendSessions: Int = 0
     ) {
         self.label = label
         self.plistPath = plistPath
@@ -134,7 +134,7 @@ public struct AgentStatus: Codable, Sendable {
         self.socketReachable = socketReachable
         self.running = running
         self.pid = pid
-        self.idleTimeout = idleTimeout
+        self.idleTimeoutNs = idleTimeoutNs
         self.backendSessions = backendSessions
     }
 }

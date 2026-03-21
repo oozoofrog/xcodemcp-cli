@@ -45,26 +45,34 @@ struct MCPCommand: AsyncParsableCommand {
         var sessionID: String?
 
         func run() async throws {
-            let config = try buildMCPConfig(
-                client: client, mode: mode, name: name, scope: scope,
-                xcodePID: xcodePID, sessionID: sessionID
+            let executablePath = try resolveCurrentExecutablePath()
+            var result = try buildMCPConfigResult(
+                client: client, mode: mode, name: name,
+                scope: resolveScope(client: client, scope: scope),
+                xcodePID: xcodePID, sessionID: sessionID,
+                executablePath: executablePath
             )
+
+            if write {
+                result.write = await performMCPConfigWrite(
+                    client: client, name: name,
+                    scope: result.scope ?? "",
+                    result: result
+                )
+            }
 
             if json {
                 let encoder = JSONEncoder()
                 encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-                let data = try encoder.encode(config)
+                let data = try encoder.encode(result)
                 FileHandle.standardOutput.write(data)
                 FileHandle.standardOutput.write(Data("\n".utf8))
             } else {
-                print(config.command)
+                print(formatMCPConfigResult(result))
             }
 
-            if write {
-                let runner = SystemProcessRunner()
-                let parts = config.command.split(separator: " ").map(String.init)
-                guard let cmd = parts.first else { return }
-                _ = try await runner.run(cmd, arguments: Array(parts.dropFirst()))
+            if write && (!result.write.executed || result.write.exitCode != 0) {
+                throw ExitCode(1)
             }
         }
     }
@@ -152,51 +160,350 @@ struct MCPCommand: AsyncParsableCommand {
     }
 }
 
-// MARK: - MCP Config Generation
+// MARK: - Types
+
+struct MCPConfigServerSpec: Codable {
+    let command: String
+    let args: [String]
+    let env: [String: String]
+}
+
+struct MCPConfigWriteResult: Codable {
+    var requested: Bool
+    var executed: Bool
+    var exitCode: Int
+    var stdout: String
+    var stderr: String
+
+    static let notRequested = MCPConfigWriteResult(
+        requested: false, executed: false, exitCode: 0, stdout: "", stderr: ""
+    )
+}
 
 struct MCPConfigResult: Codable {
     let client: String
     let mode: String
     let name: String
-    let command: String
     let scope: String?
+    let server: MCPConfigServerSpec
+    let command: [String]
+    let displayCommand: String
+    var write: MCPConfigWriteResult
 }
 
-func buildMCPConfig(
-    client: String, mode: String, name: String, scope: String?,
-    xcodePID: String?, sessionID: String?
-) throws -> MCPConfigResult {
-    let xcodecliPath = "/usr/local/bin/xcodecli"
-    let subcommand = mode == "bridge" ? "bridge" : "serve"
+// MARK: - Config Building
 
-    var args = [xcodecliPath, subcommand]
+private func resolveScope(client: String, scope: String?) -> String {
+    switch client.lowercased() {
+    case "codex": return ""
+    case "claude": return scope ?? "local"
+    case "gemini": return scope ?? "user"
+    default: return scope ?? ""
+    }
+}
+
+private func resolveCurrentExecutablePath() throws -> String {
+    // Try CommandLine.arguments[0] first
+    let argv0 = CommandLine.arguments.first ?? ""
+    if !argv0.isEmpty {
+        let path: String
+        if (argv0 as NSString).isAbsolutePath {
+            path = (argv0 as NSString).standardizingPath
+        } else if argv0.contains("/") {
+            let cwd = FileManager.default.currentDirectoryPath
+            path = ((cwd as NSString).appendingPathComponent(argv0) as NSString).standardizingPath
+        } else {
+            // Search PATH
+            let pathDirs = (ProcessInfo.processInfo.environment["PATH"] ?? "").split(separator: ":").map(String.init)
+            let found = pathDirs.first { dir in
+                let full = (dir as NSString).appendingPathComponent(argv0)
+                return FileManager.default.isExecutableFile(atPath: full)
+            }
+            if let found {
+                path = (found as NSString).appendingPathComponent(argv0)
+            } else {
+                path = argv0
+            }
+        }
+        return path
+    }
+    // Fallback to Bundle.main.executablePath
+    if let execPath = Bundle.main.executablePath {
+        return (execPath as NSString).standardizingPath
+    }
+    throw ValidationError("cannot resolve current executable path")
+}
+
+private func explicitMCPConfigEnv(xcodePID: String?, sessionID: String?) -> [String: String] {
+    var env: [String: String] = [:]
     if let pid = xcodePID, !pid.isEmpty {
-        args += ["--xcode-pid", pid]
+        env["MCP_XCODE_PID"] = pid
     }
     if let sid = sessionID, !sid.isEmpty {
-        args += ["--session-id", sid]
+        env["MCP_XCODE_SESSION_ID"] = sid
     }
+    return env
+}
 
-    let command: String
-    let resolvedScope: String?
+private func buildMCPConfigResult(
+    client: String, mode: String, name: String, scope: String,
+    xcodePID: String?, sessionID: String?,
+    executablePath: String
+) throws -> MCPConfigResult {
+    let serverArgs = mode == "bridge" ? ["bridge"] : ["serve"]
+    let server = MCPConfigServerSpec(
+        command: executablePath,
+        args: serverArgs,
+        env: explicitMCPConfigEnv(xcodePID: xcodePID, sessionID: sessionID)
+    )
 
-    switch client.lowercased() {
-    case "codex":
-        command = "codex mcp add \(name) -- \(args.joined(separator: " "))"
-        resolvedScope = nil
-    case "claude":
-        let s = scope ?? "local"
-        command = "claude mcp add \(name) --scope \(s) -- \(args.joined(separator: " "))"
-        resolvedScope = s
-    case "gemini":
-        let s = scope ?? "user"
-        command = "gemini mcp add \(name) --scope \(s) -- \(args.joined(separator: " "))"
-        resolvedScope = s
-    default:
-        throw ValidationError("unsupported client: \(client)")
-    }
+    let invocation = try buildMCPConfigInvocation(
+        client: client, name: name, scope: scope, server: server
+    )
+    let command = [invocation.name] + invocation.args
 
     return MCPConfigResult(
-        client: client, mode: mode, name: name, command: command, scope: resolvedScope
+        client: client,
+        mode: mode,
+        name: name,
+        scope: scope.isEmpty ? nil : scope,
+        server: server,
+        command: command,
+        displayCommand: shellQuoteCommand(command),
+        write: MCPConfigWriteResult(requested: false, executed: false, exitCode: 0, stdout: "", stderr: "")
     )
+}
+
+// MARK: - Per-Client Invocation Building
+
+private struct CommandInvocation {
+    let name: String
+    let args: [String]
+}
+
+private func buildMCPConfigInvocation(
+    client: String, name: String, scope: String, server: MCPConfigServerSpec
+) throws -> CommandInvocation {
+    switch client.lowercased() {
+    case "codex":
+        var args = ["mcp", "add", name]
+        args += envArgs(flagName: "--env", env: server.env)
+        args += ["--", server.command]
+        args += server.args
+        return CommandInvocation(name: "codex", args: args)
+
+    case "claude":
+        let payload = try buildClaudeJSONPayload(server: server)
+        return CommandInvocation(
+            name: "claude",
+            args: ["mcp", "add-json", "-s", scope, name, payload]
+        )
+
+    case "gemini":
+        var args = ["mcp", "add", "-s", scope]
+        args += envArgs(flagName: "-e", env: server.env)
+        args += [name, server.command]
+        args += server.args
+        return CommandInvocation(name: "gemini", args: args)
+
+    default:
+        throw ValidationError("unsupported MCP client: \(client)")
+    }
+}
+
+private func buildClaudeJSONPayload(server: MCPConfigServerSpec) throws -> String {
+    struct ClaudePayload: Codable {
+        let type: String
+        let command: String
+        let args: [String]
+        let env: [String: String]?
+    }
+    let payload = ClaudePayload(
+        type: "stdio",
+        command: server.command,
+        args: server.args,
+        env: server.env.isEmpty ? nil : server.env
+    )
+    let encoder = JSONEncoder()
+    encoder.outputFormatting = .sortedKeys
+    let data = try encoder.encode(payload)
+    return String(data: data, encoding: .utf8) ?? "{}"
+}
+
+private func envArgs(flagName: String, env: [String: String]) -> [String] {
+    guard !env.isEmpty else { return [] }
+    let sorted = env.keys.sorted()
+    var args: [String] = []
+    for key in sorted {
+        args.append(flagName)
+        args.append("\(key)=\(env[key]!)")
+    }
+    return args
+}
+
+// MARK: - Write Execution
+
+private func performMCPConfigWrite(
+    client: String, name: String, scope: String, result: MCPConfigResult
+) async -> MCPConfigWriteResult {
+    var writeResult = MCPConfigWriteResult(
+        requested: true, executed: false, exitCode: 0, stdout: "", stderr: ""
+    )
+
+    let invocation: CommandInvocation
+    do {
+        invocation = try buildMCPConfigInvocation(
+            client: client, name: name, scope: scope, server: result.server
+        )
+    } catch {
+        writeResult.stderr = error.localizedDescription
+        return writeResult
+    }
+
+    switch client.lowercased() {
+    case "claude":
+        // Try add-json, if "already exists" then remove + retry
+        let (firstResult, firstErr) = await runInvocation(invocation)
+        mergeWriteResult(&writeResult, run: firstResult, error: firstErr)
+        if firstErr == nil && firstResult.exitCode == 0 { return writeResult }
+        guard claudeAlreadyExists(run: firstResult, error: firstErr) else { return writeResult }
+
+        let removeInvocation = CommandInvocation(
+            name: "claude", args: ["mcp", "remove", "-s", scope, name]
+        )
+        let (removeResult, removeErr) = await runInvocation(removeInvocation)
+        mergeWriteResult(&writeResult, run: removeResult, error: removeErr)
+        if removeErr != nil { return writeResult }
+        if removeResult.exitCode != 0 && !claudeRemoveNotFound(run: removeResult) { return writeResult }
+
+        let (retryResult, retryErr) = await runInvocation(invocation)
+        mergeWriteResult(&writeResult, run: retryResult, error: retryErr)
+        return writeResult
+
+    default:
+        let (runResult, runErr) = await runInvocation(invocation)
+        mergeWriteResult(&writeResult, run: runResult, error: runErr)
+        return writeResult
+    }
+}
+
+private struct ExternalCommandResult {
+    var exitCode: Int
+    var stdout: String
+    var stderr: String
+}
+
+private func runInvocation(_ invocation: CommandInvocation) async -> (ExternalCommandResult, Error?) {
+    let runner = SystemProcessRunner()
+    do {
+        // Look up the command on PATH
+        let pathDirs = (ProcessInfo.processInfo.environment["PATH"] ?? "").split(separator: ":").map(String.init)
+        let resolved = pathDirs
+            .map { ($0 as NSString).appendingPathComponent(invocation.name) }
+            .first { FileManager.default.isExecutableFile(atPath: $0) }
+        guard let cmdPath = resolved else {
+            return (ExternalCommandResult(exitCode: 1, stdout: "", stderr: "\(invocation.name) CLI not found on PATH"),
+                    ValidationError("\(invocation.name) CLI not found on PATH"))
+        }
+        let result = try await runner.run(cmdPath, arguments: invocation.args)
+        return (ExternalCommandResult(
+            exitCode: Int(result.exitCode),
+            stdout: result.stdout.trimmingCharacters(in: .whitespacesAndNewlines),
+            stderr: result.stderr.trimmingCharacters(in: .whitespacesAndNewlines)
+        ), nil)
+    } catch {
+        return (ExternalCommandResult(exitCode: 1, stdout: "", stderr: error.localizedDescription), error)
+    }
+}
+
+private func mergeWriteResult(_ target: inout MCPConfigWriteResult, run: ExternalCommandResult, error: Error?) {
+    if let error {
+        target.stderr = joinOutput(target.stderr, error.localizedDescription)
+        return
+    }
+    target.executed = true
+    target.exitCode = run.exitCode
+    target.stdout = joinOutput(target.stdout, run.stdout)
+    target.stderr = joinOutput(target.stderr, run.stderr)
+}
+
+private func claudeAlreadyExists(run: ExternalCommandResult, error: Error?) -> Bool {
+    if error != nil || run.exitCode == 0 { return false }
+    let combined = (run.stdout + "\n" + run.stderr).lowercased()
+    return combined.contains("already exists")
+}
+
+private func claudeRemoveNotFound(run: ExternalCommandResult) -> Bool {
+    if run.exitCode == 0 { return false }
+    let combined = (run.stdout + "\n" + run.stderr).lowercased()
+    return combined.contains("no mcp server found")
+}
+
+private func joinOutput(_ existing: String, _ next: String) -> String {
+    let a = existing.trimmingCharacters(in: .whitespacesAndNewlines)
+    let b = next.trimmingCharacters(in: .whitespacesAndNewlines)
+    if a.isEmpty { return b }
+    if b.isEmpty { return a }
+    return a + "\n" + b
+}
+
+// MARK: - Shell Quoting
+
+private func shellQuoteCommand(_ argv: [String]) -> String {
+    argv.map(mcpShellQuote).joined(separator: " ")
+}
+
+private func mcpShellQuote(_ value: String) -> String {
+    if value.isEmpty { return "''" }
+    let safe = value.allSatisfy { c in
+        switch c {
+        case "a"..."z", "A"..."Z", "0"..."9", "-", "_", ".", "/", ":", "=":
+            return true
+        default:
+            return false
+        }
+    }
+    if safe { return value }
+    return "'" + value.replacingOccurrences(of: "'", with: "'\\''") + "'"
+}
+
+// MARK: - Text Formatting
+
+private func formatMCPConfigResult(_ result: MCPConfigResult) -> String {
+    var lines: [String] = []
+    lines.append("client: \(result.client)")
+    lines.append("mode: \(result.mode)")
+    lines.append("name: \(result.name)")
+    if let scope = result.scope, !scope.isEmpty {
+        lines.append("scope: \(scope)")
+    }
+    lines.append("server: \(result.server.command) \(result.server.args.joined(separator: " "))")
+    if result.server.env.isEmpty {
+        lines.append("env: none")
+    } else {
+        lines.append("env:")
+        for key in result.server.env.keys.sorted() {
+            lines.append("  \(key)=\(result.server.env[key]!)")
+        }
+    }
+    lines.append("command:")
+    lines.append("  \(result.displayCommand)")
+    lines.append("write requested: \(result.write.requested)")
+    if result.write.requested {
+        lines.append("write executed: \(result.write.executed)")
+        lines.append("write exit code: \(result.write.exitCode)")
+        if !result.write.stdout.isEmpty {
+            lines.append("write stdout:")
+            for line in result.write.stdout.split(separator: "\n", omittingEmptySubsequences: false) {
+                lines.append("  \(line)")
+            }
+        }
+        if !result.write.stderr.isEmpty {
+            lines.append("write stderr:")
+            for line in result.write.stderr.split(separator: "\n", omittingEmptySubsequences: false) {
+                lines.append("  \(line)")
+            }
+        }
+    }
+    return lines.joined(separator: "\n")
 }

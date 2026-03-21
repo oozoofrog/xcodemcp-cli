@@ -38,8 +38,11 @@ struct ToolCommand: AsyncParsableCommand {
             let (effective, _) = try resolveOptions(env: env, xcodePID: xcodePID, sessionID: sessionID)
             let bridgeEnv = EnvOptions.applyOverrides(baseEnv: env, opts: effective)
 
-            let config = MCPClient.Config(environment: bridgeEnv, debug: debug)
-            let tools = try await MCPSession.listTools(config: config)
+            let request = buildAgentRequest(
+                env: bridgeEnv, effective: effective,
+                timeout: TimeInterval(timeout), debug: debug
+            )
+            let tools = try await AgentClient.listTools(request: request)
 
             guard let tool = tools.first(where: {
                 if case .object(let obj) = $0, case .string(let n) = obj["name"] { return n == name }
@@ -120,12 +123,20 @@ struct ToolCommand: AsyncParsableCommand {
 
             let arguments = try parseJSONArguments(jsonPayload)
 
+            // Apply tool-specific default timeout if not explicitly set
+            let effectiveTimeout = timeout ?? Int(TimeoutPolicy.defaultToolCallTimeout(toolName: name))
+
             let env = envDictionary()
             let (effective, _) = try resolveOptions(env: env, xcodePID: xcodePID, sessionID: sessionID)
             let bridgeEnv = EnvOptions.applyOverrides(baseEnv: env, opts: effective)
 
-            let config = MCPClient.Config(environment: bridgeEnv, debug: debug)
-            let result = try await MCPSession.callTool(config: config, name: name, arguments: arguments)
+            let request = buildAgentRequest(
+                env: bridgeEnv, effective: effective,
+                timeout: TimeInterval(effectiveTimeout), debug: debug
+            )
+            let result = try await AgentClient.callTool(
+                request: request, name: name, arguments: arguments
+            )
 
             let encoder = JSONEncoder()
             encoder.outputFormatting = [.prettyPrinted, .sortedKeys]

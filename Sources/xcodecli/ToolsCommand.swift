@@ -35,8 +35,11 @@ struct ToolsCommand: AsyncParsableCommand {
             let (effective, _) = try resolveOptions(env: env, xcodePID: xcodePID, sessionID: sessionID)
             let bridgeEnv = EnvOptions.applyOverrides(baseEnv: env, opts: effective)
 
-            let config = MCPClient.Config(environment: bridgeEnv, debug: debug)
-            let tools = try await MCPSession.listTools(config: config)
+            let request = buildAgentRequest(
+                env: bridgeEnv, effective: effective,
+                timeout: TimeInterval(timeout), debug: debug
+            )
+            let tools = try await AgentClient.listTools(request: request)
 
             if json {
                 let encoder = JSONEncoder()
