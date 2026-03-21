@@ -5,15 +5,20 @@ import Darwin
 
 /// Safely set the sun_path field of a sockaddr_un from a Swift String.
 /// Uses withUnsafeMutableBytes to correctly access the full sun_path buffer.
-func setUnixSocketPath(_ addr: inout sockaddr_un, to path: String) {
+/// Returns false if the path was truncated (exceeds sun_path capacity).
+@discardableResult
+func setUnixSocketPath(_ addr: inout sockaddr_un, to path: String) -> Bool {
+    var truncated = false
     withUnsafeMutableBytes(of: &addr.sun_path) { buffer in
-        // Zero the buffer first
         buffer.baseAddress!.initializeMemory(as: UInt8.self, repeating: 0, count: buffer.count)
         path.withCString { cStr in
-            let len = min(strlen(cStr), buffer.count - 1)
+            let pathLen = strlen(cStr)
+            let len = min(pathLen, buffer.count - 1)
+            if pathLen > buffer.count - 1 { truncated = true }
             buffer.baseAddress!.copyMemory(from: cStr, byteCount: len)
         }
     }
+    return !truncated
 }
 
 /// Write all bytes to a file descriptor, handling partial writes and EINTR.

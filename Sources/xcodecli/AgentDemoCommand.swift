@@ -86,11 +86,7 @@ func runAgentDemo(
     // Windows demo
     var windowsDemo = DemoWindowsResult(toolName: demoWindowsToolName, arguments: [:])
     if let tools {
-        let found = tools.first { tool in
-            if case .object(let obj) = tool, case .string(let n) = obj["name"] { return n == demoWindowsToolName }
-            return false
-        }
-        if found == nil {
+        if findToolByName(tools, demoWindowsToolName) == nil {
             windowsDemo.error = DemoDemoStepError(step: "windows demo", message: "tool not found: XcodeListWindows")
             errors.append(windowsDemo.error!)
         } else {
@@ -100,7 +96,7 @@ func runAgentDemo(
                 windowsDemo.result = result.result
                 windowsDemo.ok = !result.isError
                 if result.isError {
-                    let msg = extractDemoMessage(result.result)
+                    let msg = extractToolResultMessage(result.result)
                     windowsDemo.error = DemoDemoStepError(step: "windows demo", message: msg.isEmpty ? "tool returned isError=true" : msg)
                     errors.append(windowsDemo.error!)
                 }
@@ -150,10 +146,7 @@ private func buildDemoToolCatalog(_ tools: [JSONValue]) -> DemoToolCatalog {
 
     var highlights: [DemoToolHighlight] = []
     for name in demoHighlightToolNames {
-        guard let tool = tools.first(where: { tool in
-            if case .object(let obj) = tool, case .string(let n) = obj["name"] { return n == name }
-            return false
-        }) else { continue }
+        guard let tool = findToolByName(tools, name) else { continue }
 
         var desc = ""
         var requiredArgs: [String] = []
@@ -180,7 +173,7 @@ private func agentDemoNextCommands() -> [String] {
     ]
 }
 
-private func extractDemoMessage(_ result: [String: JSONValue]) -> String {
+func extractToolResultMessage(_ result: [String: JSONValue]) -> String {
     if case .object(let structured) = result["structuredContent"],
        case .string(let msg) = structured["message"],
        !msg.trimmingCharacters(in: .whitespaces).isEmpty {
@@ -193,6 +186,9 @@ private func extractDemoMessage(_ result: [String: JSONValue]) -> String {
             return nil
         }
         if !messages.isEmpty { return messages.joined(separator: "\n") }
+    }
+    if let data = try? JSONEncoder().encode(result), let text = String(data: data, encoding: .utf8) {
+        return text
     }
     return ""
 }
@@ -246,7 +242,7 @@ private func formatAgentDemo(_ report: AgentDemoReport) -> String {
     if report.windowsDemo.ok {
         b += "status: ok\n"
         if let result = report.windowsDemo.result {
-            let msg = extractDemoMessage(result)
+            let msg = extractToolResultMessage(result)
             if !msg.isEmpty {
                 b += "output:\n"
                 for line in msg.split(separator: "\n") {

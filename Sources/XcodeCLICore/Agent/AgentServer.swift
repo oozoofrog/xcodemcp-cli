@@ -202,9 +202,7 @@ public final class AgentServer: @unchecked Sendable {
 
     private func dispatch(_ req: AgentRequest) async -> AgentResponse {
         switch req.method {
-        case "ping":
-            return AgentResponse(status: runtimeStatus())
-        case "status":
+        case "ping", "status":
             return AgentResponse(status: runtimeStatus())
         case "stop":
             return AgentResponse()
@@ -371,6 +369,11 @@ public final class AgentServer: @unchecked Sendable {
     private func startIdleTimer() {
         lock.lock()
         defer { lock.unlock() }
+        startIdleTimerLocked()
+    }
+
+    /// Must be called with `lock` held.
+    private func startIdleTimerLocked() {
         stopIdleTimerLocked()
         let timer = DispatchSource.makeTimerSource(queue: .global())
         timer.schedule(deadline: .now() + cfg.idleTimeout)
@@ -379,6 +382,7 @@ public final class AgentServer: @unchecked Sendable {
         idleTimer = timer
     }
 
+    /// Must be called with `lock` held.
     private func stopIdleTimerLocked() {
         idleTimer?.cancel()
         idleTimer = nil
@@ -396,12 +400,7 @@ public final class AgentServer: @unchecked Sendable {
         defer { lock.unlock() }
         if activeConnections > 0 { activeConnections -= 1 }
         if activeConnections == 0 && !closed {
-            stopIdleTimerLocked()
-            let timer = DispatchSource.makeTimerSource(queue: .global())
-            timer.schedule(deadline: .now() + cfg.idleTimeout)
-            timer.setEventHandler { [weak self] in self?.shutdown() }
-            timer.resume()
-            idleTimer = timer
+            startIdleTimerLocked()
         }
     }
 
@@ -469,7 +468,9 @@ public final class AgentServer: @unchecked Sendable {
             cfg.errOut.write(Data("[error] failed to encode agent response: \(error)\n".utf8))
             payload = Data("{\"error\":\"internal: response encoding failed\"}\n".utf8)
         }
-        _ = writeAllToFD(fd, payload)
+        if !writeAllToFD(fd, payload) {
+            cfg.errOut.write(Data("[error] failed to write agent response to fd \(fd)\n".utf8))
+        }
     }
 
     private func resolveExecutablePath() throws -> String {
