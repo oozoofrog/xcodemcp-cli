@@ -428,6 +428,11 @@ private final class TestGate: @unchecked Sendable {
                 let shouldResume = lock.withLock { () -> Bool in
                     if isOpen { return true }
                     continuation = cont
+                    // Handle pre-cancelled task: resume immediately to avoid hanging
+                    if Task.isCancelled {
+                        continuation = nil
+                        return true
+                    }
                     return false
                 }
                 if shouldResume { cont.resume() }
@@ -451,5 +456,88 @@ private final class TestGate: @unchecked Sendable {
             return c
         }
         cont?.resume()
+    }
+}
+
+// MARK: - TestGate Edge Case Tests
+
+@Suite("TestGate")
+struct TestGateTests {
+    @Test("open before wait returns immediately")
+    func openBeforeWait() async {
+        let gate = TestGate()
+        gate.open()
+        // wait() should return immediately due to latch
+        await gate.wait()
+    }
+
+    @Test("wait then open resumes")
+    func waitThenOpen() async {
+        let gate = TestGate()
+        let resumed = LockedFlag()
+        Task {
+            await gate.wait()
+            resumed.set()
+        }
+        // Give the Task time to suspend on gate.wait()
+        try? await Task.sleep(nanoseconds: 50_000_000)
+        #expect(!resumed.value)
+        gate.open()
+        try? await Task.sleep(nanoseconds: 50_000_000)
+        #expect(resumed.value)
+    }
+
+    @Test("pre-cancelled task does not hang in wait")
+    func preCancelledTaskDoesNotHang() async {
+        let gate = TestGate()
+        let task = Task {
+            // Cancel before calling wait
+            await gate.wait()
+        }
+        task.cancel()
+        // The task should complete promptly (not hang forever)
+        // Use a timeout via withThrowingTaskGroup to detect hangs
+        let completed = await withTaskGroup(of: Bool.self) { group in
+            group.addTask {
+                _ = await task.value
+                return true
+            }
+            group.addTask {
+                try? await Task.sleep(nanoseconds: 2_000_000_000) // 2s timeout
+                return false
+            }
+            let first = await group.next()!
+            group.cancelAll()
+            return first
+        }
+        #expect(completed, "pre-cancelled task should not hang in gate.wait()")
+    }
+
+    @Test("cancellation during wait resumes continuation")
+    func cancellationDuringWait() async {
+        let gate = TestGate()
+        let started = LockedFlag()
+        let task = Task {
+            started.set()
+            await gate.wait()
+        }
+        await started.wait()
+        // Task is now suspended on gate.wait()
+        task.cancel()
+        // The task should complete promptly
+        let completed = await withTaskGroup(of: Bool.self) { group in
+            group.addTask {
+                _ = await task.value
+                return true
+            }
+            group.addTask {
+                try? await Task.sleep(nanoseconds: 2_000_000_000)
+                return false
+            }
+            let first = await group.next()!
+            group.cancelAll()
+            return first
+        }
+        #expect(completed, "cancelled task should not hang in gate.wait()")
     }
 }
