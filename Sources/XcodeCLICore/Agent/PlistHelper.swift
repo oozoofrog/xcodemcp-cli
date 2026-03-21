@@ -38,7 +38,7 @@ public func readLaunchAgentBinaryPath(_ plistPath: String) -> String? {
 
 /// Parse binary path from plist XML content.
 /// Extracts the first <string> element inside the ProgramArguments <array>.
-private func readLaunchAgentBinaryPathFromString(_ content: String) -> String? {
+func readLaunchAgentBinaryPathFromString(_ content: String) -> String? {
     guard let data = content.data(using: .utf8) else { return nil }
 
     class PlistParser: NSObject, XMLParserDelegate {
@@ -115,7 +115,7 @@ public func renderLaunchAgentPlist(
     """ + "\n"
 }
 
-private func xmlEscape(_ raw: String) -> String {
+func xmlEscape(_ raw: String) -> String {
     raw
         .replacingOccurrences(of: "&", with: "&amp;")
         .replacingOccurrences(of: "<", with: "&lt;")

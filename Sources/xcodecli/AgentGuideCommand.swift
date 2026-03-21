@@ -4,7 +4,7 @@ import XcodeCLICore
 // MARK: - Constants
 
 private let guideWorkflowCatalog = "catalog"
-private let guideWorkflowOrder = ["build", "test", "read", "search", "edit", "diagnose"]
+let guideWorkflowOrder = ["build", "test", "read", "search", "edit", "diagnose"]
 
 private let guideWorkflowTitles: [String: String] = [
     guideWorkflowCatalog: "Workflow catalog overview",
@@ -43,7 +43,7 @@ private struct GuideIntentResult: Codable {
     let alternatives: [String]
 }
 
-private struct GuideWindowEntry: Codable {
+struct GuideWindowEntry: Codable {
     let tabIdentifier: String
     let workspacePath: String
 }
@@ -112,7 +112,7 @@ private struct AgentGuideReport: Codable {
 
 // MARK: - Window Match Type
 
-private struct GuideWindowMatch {
+struct GuideWindowMatch {
     var matchedEntry: GuideWindowEntry?
     var ambiguous: Bool = false
     var note: String = ""
@@ -120,7 +120,7 @@ private struct GuideWindowMatch {
 
 // MARK: - Intent Classification
 
-private struct IntentMatch {
+struct IntentMatch {
     let raw: String
     let workflowID: String
     let confidence: Double
@@ -128,7 +128,7 @@ private struct IntentMatch {
     let subject: String
 }
 
-private func classifyGuideIntent(_ raw: String) -> IntentMatch {
+func classifyGuideIntent(_ raw: String) -> IntentMatch {
     let trimmed = raw.trimmingCharacters(in: .whitespaces)
     if trimmed.isEmpty {
         return IntentMatch(raw: "", workflowID: guideWorkflowCatalog, confidence: 1, alternatives: guideWorkflowOrder, subject: "")
@@ -209,7 +209,7 @@ private func extractGuideSubject(_ raw: String, _ workflowID: String) -> String 
 
 // MARK: - Window Matching
 
-private func resolveGuideWindowMatch(entries: [GuideWindowEntry], subject: String) -> GuideWindowMatch {
+func resolveGuideWindowMatch(entries: [GuideWindowEntry], subject: String) -> GuideWindowMatch {
     if entries.isEmpty {
         return GuideWindowMatch(note: "No live Xcode windows were discovered.")
     }
@@ -242,7 +242,7 @@ private func resolveGuideWindowMatch(entries: [GuideWindowEntry], subject: Strin
     )
 }
 
-private func guideWindowMatchTokens(_ subject: String) -> [String] {
+func guideWindowMatchTokens(_ subject: String) -> [String] {
     var normalized = subject.lowercased()
     let replacements: [(String, String)] = [
         (".xcodeproj", " "), (".xcworkspace", " "), (".swift", " "),
@@ -271,7 +271,7 @@ private func guideWindowMatchTokens(_ subject: String) -> [String] {
     return tokens
 }
 
-private func guideWindowEntryScore(_ entry: GuideWindowEntry, tokens: [String]) -> Int {
+func guideWindowEntryScore(_ entry: GuideWindowEntry, tokens: [String]) -> Int {
     let pathLower = entry.workspacePath.lowercased()
     let baseLower = (entry.workspacePath as NSString).lastPathComponent.lowercased()
     let ext = (baseLower as NSString).pathExtension
@@ -368,7 +368,7 @@ private func guideReasonForIntent(_ windowMatch: GuideWindowMatch, _ base: Strin
     return base
 }
 
-private func guideWorkflowToolChain(_ workflowID: String) -> [String] {
+func guideWorkflowToolChain(_ workflowID: String) -> [String] {
     switch workflowID {
     case "build":
         return ["XcodeListWindows", "BuildProject", "GetBuildLog"]
@@ -621,7 +621,7 @@ func runAgentGuide(
 
 // MARK: - Tool Catalog Building
 
-private let guideHighlightToolNames = [
+let guideHighlightToolNames = [
     "XcodeListWindows", "BuildProject", "GetBuildLog", "RunAllTests", "GetTestList",
     "RunSomeTests", "XcodeLS", "XcodeRead", "XcodeGlob", "XcodeGrep",
     "XcodeUpdate", "XcodeWrite", "XcodeRefreshCodeIssuesInFile", "XcodeListNavigatorIssues",

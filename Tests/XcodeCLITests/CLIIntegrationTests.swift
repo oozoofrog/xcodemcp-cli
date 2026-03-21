@@ -17,6 +17,36 @@ struct CLIIntegrationTests {
         #expect(result.exitCode == 0)
     }
 
+    @Test("xcodecli --help exits 0")
+    func helpExitsZero() async throws {
+        let result = try await runCLI(["--help"])
+        #expect(result.exitCode == 0)
+    }
+
+    @Test("xcodecli doctor --help exits 0")
+    func doctorHelpExitsZero() async throws {
+        let result = try await runCLI(["doctor", "--help"])
+        #expect(result.exitCode == 0)
+    }
+
+    @Test("xcodecli agent status --help exits 0")
+    func agentStatusHelpExitsZero() async throws {
+        let result = try await runCLI(["agent", "status", "--help"])
+        #expect(result.exitCode == 0)
+    }
+
+    @Test("xcodecli with unknown subcommand exits non-zero")
+    func unknownExitsNonZero() async throws {
+        let result = try await runCLI(["zzz-no-such-command"])
+        #expect(result.exitCode != 0)
+    }
+
+    @Test("xcodecli bridge --help exits 0")
+    func bridgeHelpExitsZero() async throws {
+        let result = try await runCLI(["bridge", "--help"])
+        #expect(result.exitCode == 0)
+    }
+
     // MARK: - Helpers
 
     private func runCLI(_ arguments: [String]) async throws -> CLIResult {

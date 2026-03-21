@@ -33,12 +33,12 @@ public struct MCPServerHandler: Sendable {
 
 // MARK: - In-flight Request Tracking
 
-private struct InFlightRequest {
+struct InFlightRequest {
     let task: Task<Void, Never>
     var cancelled: Bool = false
 }
 
-private final class InFlightTracker: @unchecked Sendable {
+final class InFlightTracker: @unchecked Sendable {
     private let lock = NSLock()
     private var requests: [String: InFlightRequest] = [:]
 
@@ -93,7 +93,7 @@ private final class InFlightTracker: @unchecked Sendable {
 
 // MARK: - Canonical Request Key
 
-private func canonicalRequestKey(_ id: JSONValue?) -> String? {
+func canonicalRequestKey(_ id: JSONValue?) -> String? {
     guard let id else { return nil }
     switch id {
     case .null:
@@ -113,7 +113,7 @@ private func canonicalRequestKey(_ id: JSONValue?) -> String? {
     }
 }
 
-private func canonicalRequestKeyFromCancelParams(_ params: JSONValue?) -> String? {
+func canonicalRequestKeyFromCancelParams(_ params: JSONValue?) -> String? {
     guard case .object(let obj) = params,
           let requestId = obj["requestId"] else {
         return nil
@@ -353,7 +353,7 @@ private func buildInitializeResponse(envelope: RPCEnvelope, config: MCPServerCon
 
 // MARK: - Tool Call Params Decoding
 
-private func decodeToolCallParams(_ params: JSONValue?) throws -> (String, [String: JSONValue]) {
+func decodeToolCallParams(_ params: JSONValue?) throws -> (String, [String: JSONValue]) {
     guard case .object(let obj) = params else {
         throw XcodeCLIError.mcpRPCError(code: -32602, message: "tools/call params must be a JSON object")
     }

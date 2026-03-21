@@ -34,6 +34,7 @@ let package = Package(
         .testTarget(
             name: "XcodeCLITests",
             dependencies: [
+                "xcodecli",
                 "XcodeCLICore",
                 .product(name: "ArgumentParser", package: "swift-argument-parser"),
             ]
