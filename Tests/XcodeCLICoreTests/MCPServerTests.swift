@@ -288,12 +288,13 @@ struct MCPServerTests {
     @Test("cancellation suppresses response for delayed request")
     func cancellationSuppressesResponse() async throws {
         let callStarted = LockedFlag()
+        let gate = TestGate()
 
         let handler = MCPServerHandler(
             listTools: { [.object(["name": .string("TestTool")])] },
             callTool: { _, _ in
                 callStarted.set()
-                try await Task.sleep(nanoseconds: 500_000_000) // 500ms
+                await gate.wait() // Block until test opens the gate
                 return MCPCallResult(result: ["content": .string("late")])
             }
         )
@@ -306,15 +307,19 @@ struct MCPServerTests {
         ]))
 
         // Wait for the handler to start
-        while !callStarted.value {
-            try await Task.sleep(nanoseconds: 10_000_000)
-        }
+        await callStarted.wait()
 
         // Cancel it
         writeLine(stdinWrite, jsonNotification(method: "notifications/cancelled", params: [
             "requestId": 1,
             "reason": "test cancel",
         ]))
+
+        // Give the server time to process the cancellation notification
+        try await Task.sleep(nanoseconds: 50_000_000) // 50ms
+
+        // Unblock the handler so it can finish (but response should be suppressed)
+        gate.open()
 
         // Send a tools/list that should respond normally
         writeLine(stdinWrite, jsonRequest(id: 2, method: "tools/list", params: [:]))
@@ -332,30 +337,33 @@ struct MCPServerTests {
     @Test("duplicate request ID returns -32600 error")
     func duplicateRequestIDReturnsError() async throws {
         let callStarted = LockedFlag()
+        let gate = TestGate()
 
         let handler = MCPServerHandler(
             listTools: {
                 callStarted.set()
-                try await Task.sleep(nanoseconds: 500_000_000) // 500ms
+                await gate.wait() // Block until test opens the gate
                 return [.object(["name": .string("TestTool")])]
             },
             callTool: { _, _ in MCPCallResult(result: ["content": .string("ok")]) }
         )
         let (stdinWrite, stdoutRead, serverTask) = startServer(handler: handler)
 
-        // Send first tools/list (will be slow)
+        // Send first tools/list (will block in handler)
         writeLine(stdinWrite, jsonRequest(id: 1, method: "tools/list", params: [:]))
 
         // Wait for the handler to start
-        while !callStarted.value {
-            try await Task.sleep(nanoseconds: 10_000_000)
-        }
+        await callStarted.wait()
 
         // Send duplicate tools/list with same id
         writeLine(stdinWrite, jsonRequest(id: 1, method: "tools/list", params: [:]))
 
         // Read the duplicate error response (comes first because it's synchronous)
         let responseLine = readLine(from: stdoutRead)
+
+        // Unblock the first handler so the server can clean up
+        gate.open()
+
         stdinWrite.closeFile()
         try? await serverTask.value
 
@@ -371,12 +379,55 @@ struct MCPServerTests {
 private final class LockedFlag: @unchecked Sendable {
     private let lock = NSLock()
     private var _value = false
+    private var continuation: CheckedContinuation<Void, Never>?
 
     var value: Bool {
         lock.withLock { _value }
     }
 
     func set() {
-        lock.withLock { _value = true }
+        lock.lock()
+        _value = true
+        let cont = continuation
+        continuation = nil
+        lock.unlock()
+        cont?.resume()
+    }
+
+    /// Wait until the flag is set. Returns immediately if already set.
+    func wait() async {
+        let alreadySet = lock.withLock { _value }
+        if alreadySet { return }
+        await withCheckedContinuation { cont in
+            let shouldResume = lock.withLock { () -> Bool in
+                if _value { return true }
+                continuation = cont
+                return false
+            }
+            if shouldResume { cont.resume() }
+        }
+    }
+}
+
+/// A signal that a handler can await, allowing the test to unblock it on demand.
+private final class TestGate: @unchecked Sendable {
+    private var continuation: CheckedContinuation<Void, Never>?
+    private let lock = NSLock()
+
+    /// Called by the handler to wait until the test opens the gate.
+    func wait() async {
+        await withCheckedContinuation { cont in
+            lock.withLock { continuation = cont }
+        }
+    }
+
+    /// Called by the test to unblock the handler.
+    func open() {
+        let cont = lock.withLock { () -> CheckedContinuation<Void, Never>? in
+            let c = continuation
+            continuation = nil
+            return c
+        }
+        cont?.resume()
     }
 }

@@ -19,16 +19,6 @@ struct ConcurrencyTests {
         #expect(remaining < 5000)
     }
 
-    @Test("Many empty lines before JSON-RPC do not crash")
-    func manyEmptyLinesDoNotCrash() async throws {
-        // Create a response with 100 empty lines before actual JSON
-        let emptyLines = String(repeating: "\n", count: 100)
-        let validResponse = #"{"jsonrpc":"2.0","id":1,"result":{"tools":[]}}"# + "\n"
-        // This just verifies the concept - actual MCPClient integration test in Wave 3
-        let combined = emptyLines + validResponse
-        #expect(combined.contains("jsonrpc"))
-    }
-
     @Test("Task cancellation throws CancellationError")
     func taskCancellationThrows() async {
         let task = Task {
