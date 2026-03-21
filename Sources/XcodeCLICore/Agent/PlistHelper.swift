@@ -8,6 +8,7 @@ public func ensureLaunchAgentPlist(
     paths: AgentPaths.Paths, label: String, binaryPath: String
 ) throws -> (changed: Bool, registeredBinary: String) {
     let desired = renderLaunchAgentPlist(paths: paths, label: label, binaryPath: binaryPath)
+    let plistDir = (paths.plistPath as NSString).deletingLastPathComponent
 
     if let existingData = FileManager.default.contents(atPath: paths.plistPath) {
         let existing = String(data: existingData, encoding: .utf8) ?? ""
@@ -17,16 +18,63 @@ public func ensureLaunchAgentPlist(
             return (false, registered)
         }
 
-        let plistDir = (paths.plistPath as NSString).deletingLastPathComponent
-        try FileManager.default.createDirectory(atPath: plistDir, withIntermediateDirectories: true, attributes: nil)
-        try desired.write(toFile: paths.plistPath, atomically: true, encoding: .utf8)
+        do {
+            try FileManager.default.createDirectory(atPath: plistDir, withIntermediateDirectories: true, attributes: nil)
+            try desired.write(toFile: paths.plistPath, atomically: true, encoding: .utf8)
+        } catch {
+            throw wrapPlistPermissionError(error, plistPath: paths.plistPath, plistDir: plistDir)
+        }
         return (true, registered)
     }
 
-    let plistDir = (paths.plistPath as NSString).deletingLastPathComponent
-    try FileManager.default.createDirectory(atPath: plistDir, withIntermediateDirectories: true, attributes: nil)
-    try desired.write(toFile: paths.plistPath, atomically: true, encoding: .utf8)
+    do {
+        try FileManager.default.createDirectory(atPath: plistDir, withIntermediateDirectories: true, attributes: nil)
+        try desired.write(toFile: paths.plistPath, atomically: true, encoding: .utf8)
+    } catch {
+        throw wrapPlistPermissionError(error, plistPath: paths.plistPath, plistDir: plistDir)
+    }
     return (true, "")
+}
+
+/// Wraps permission-denied errors with actionable guidance for the user.
+private func wrapPlistPermissionError(_ error: Error, plistPath: String, plistDir: String) -> Error {
+    let desc = error.localizedDescription.lowercased()
+    guard desc.contains("permission denied") || desc.contains("not permitted") else {
+        return error
+    }
+
+    let fm = FileManager.default
+    var hints: [String] = []
+
+    // Check directory ownership
+    if let attrs = try? fm.attributesOfItem(atPath: plistDir),
+       let ownerID = attrs[.ownerAccountID] as? UInt,
+       ownerID != getuid() {
+        let ownerName = attrs[.ownerAccountName] as? String ?? "uid \(ownerID)"
+        hints.append("\(plistDir) is owned by \(ownerName). Fix with: sudo chown $(whoami) \(plistDir)")
+    }
+
+    // Check if existing plist file is not writable
+    if fm.fileExists(atPath: plistPath) && !fm.isWritableFile(atPath: plistPath) {
+        if let attrs = try? fm.attributesOfItem(atPath: plistPath),
+           let ownerID = attrs[.ownerAccountID] as? UInt,
+           ownerID != getuid() {
+            let ownerName = attrs[.ownerAccountName] as? String ?? "uid \(ownerID)"
+            hints.append("\(plistPath) is owned by \(ownerName). Fix with: sudo chown $(whoami) \(plistPath)")
+        } else {
+            hints.append("\(plistPath) is not writable. Fix with: chmod u+w \(plistPath)")
+        }
+    }
+
+    if hints.isEmpty {
+        hints.append("Check permissions on \(plistDir) and \(plistPath)")
+    }
+
+    let guidance = hints.joined(separator: "\n  ")
+    return XcodeCLIError.agentUnavailable(
+        stage: "write plist",
+        underlying: "permission denied writing LaunchAgent plist.\n  \(guidance)"
+    )
 }
 
 /// Read the binary path from an existing plist file.

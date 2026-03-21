@@ -399,7 +399,58 @@ public struct DoctorInspector: Sendable {
             }
         }
 
-        // 8-9. LaunchAgent checks
+        // 8. LaunchAgents directory permissions
+        let launchAgentsDir = (AgentPaths.plistPath() as NSString).deletingLastPathComponent
+        if FileManager.default.fileExists(atPath: launchAgentsDir) {
+            if FileManager.default.isWritableFile(atPath: launchAgentsDir) {
+                checks.append(DoctorCheck(
+                    name: "LaunchAgents directory", status: .ok,
+                    detail: launchAgentsDir
+                ))
+            } else {
+                var hint = "not writable"
+                if let attrs = try? FileManager.default.attributesOfItem(atPath: launchAgentsDir),
+                   let ownerID = attrs[.ownerAccountID] as? UInt,
+                   ownerID != getuid() {
+                    let ownerName = attrs[.ownerAccountName] as? String ?? "uid \(ownerID)"
+                    hint = "owned by \(ownerName), not writable. Fix: sudo chown $(whoami) \(launchAgentsDir)"
+                }
+                checks.append(DoctorCheck(
+                    name: "LaunchAgents directory", status: .warn,
+                    detail: "\(launchAgentsDir): \(hint)"
+                ))
+            }
+        } else {
+            checks.append(DoctorCheck(
+                name: "LaunchAgents directory", status: .info,
+                detail: "\(launchAgentsDir) does not exist (will be created on first agent use)"
+            ))
+        }
+
+        // 9. Plist file permissions
+        let plistPath = AgentPaths.plistPath()
+        if FileManager.default.fileExists(atPath: plistPath) {
+            if FileManager.default.isWritableFile(atPath: plistPath) {
+                checks.append(DoctorCheck(
+                    name: "LaunchAgent plist writable", status: .ok,
+                    detail: plistPath
+                ))
+            } else {
+                var hint = "not writable"
+                if let attrs = try? FileManager.default.attributesOfItem(atPath: plistPath),
+                   let ownerID = attrs[.ownerAccountID] as? UInt,
+                   ownerID != getuid() {
+                    let ownerName = attrs[.ownerAccountName] as? String ?? "uid \(ownerID)"
+                    hint = "owned by \(ownerName). Fix: sudo chown $(whoami) \(plistPath)"
+                }
+                checks.append(DoctorCheck(
+                    name: "LaunchAgent plist writable", status: .warn,
+                    detail: "\(plistPath): \(hint)"
+                ))
+            }
+        }
+
+        // 10-11. LaunchAgent status checks
         if let errMsg = opts.agentStatusError {
             checks.append(DoctorCheck(
                 name: "LaunchAgent status", status: .info,
