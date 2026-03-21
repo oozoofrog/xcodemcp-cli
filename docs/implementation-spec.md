@@ -841,11 +841,11 @@ Transport:
 ## 9. Build / Install / Release / Operations
 
 ### 9.1 Build
-- Script: `scripts/build.sh`
-- Package: `./cmd/xcodecli`
-- ldflags:
-  - `-X main.cliVersion=<VERSION>`
-  - `-X main.cliBuildChannel=<BUILD_CHANNEL>`
+- Script: `scripts/build-swift.sh`
+- Package: Swift SPM (`Package.swift`)
+- Version injection via sed in `Sources/XcodeCLICore/Shared/Version.swift`:
+  - `Version.current` → `<VERSION>`
+  - `Version.buildChannel` → `<BUILD_CHANNEL>`
 
 ### 9.2 Install
 #### Homebrew
@@ -875,7 +875,7 @@ curl -fsSL https://raw.githubusercontent.com/oozoofrog/xcodecli/main/scripts/ins
 
 ### 9.4 Release flow
 1. Merge into `main`
-2. Run local verification (`go test`, build, version)
+2. Run local verification (`swift test`, build, version)
 3. Push an annotated tag (`vX.Y.Z`)
 4. Create/publish a GitHub Release
 5. `release.published` triggers the Homebrew workflow
@@ -901,9 +901,10 @@ Triggers:
 - pull requests
 
 Jobs:
-- gofmt check
-- `go test ./...`
-- `./scripts/build.sh .tmp/xcodecli`
+- `swift build`
+- `swift test`
+- `./scripts/build-swift.sh .tmp/xcodecli`
+- version output verification
 
 #### `.github/workflows/homebrew-release.yml`
 Triggers:

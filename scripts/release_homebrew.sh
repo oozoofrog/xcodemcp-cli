@@ -97,6 +97,12 @@ class Xcodecli < Formula
   depends_on :macos
 
   def install
+    # Inject release version and channel into Version.swift before building
+    version_file = "Sources/XcodeCLICore/Shared/Version.swift"
+    inreplace version_file, 'public static let current: String = source',
+                            "public static let current: String = \\"v#{version}\\""
+    inreplace version_file, 'public static let buildChannel: String = "dev"',
+                            'public static let buildChannel: String = "release"'
     system "swift", "build", "-c", "release", "--disable-sandbox"
     bin.install ".build/release/xcodecli"
   end

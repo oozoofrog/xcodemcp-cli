@@ -841,11 +841,11 @@ LaunchAgent 설치/실행/세션 상태 확인
 ## 9. 빌드 / 설치 / 릴리스 / 운영
 
 ### 9.1 빌드
-- script: `scripts/build.sh`
-- package: `./cmd/xcodecli`
-- ldflags:
-  - `-X main.cliVersion=<VERSION>`
-  - `-X main.cliBuildChannel=<BUILD_CHANNEL>`
+- script: `scripts/build-swift.sh`
+- package: Swift SPM (`Package.swift`)
+- 버전 주입: `Sources/XcodeCLICore/Shared/Version.swift` 내 sed 치환
+  - `Version.current` → `<VERSION>`
+  - `Version.buildChannel` → `<BUILD_CHANNEL>`
 
 ### 9.2 설치
 #### Homebrew
@@ -875,7 +875,7 @@ curl -fsSL https://raw.githubusercontent.com/oozoofrog/xcodecli/main/scripts/ins
 
 ### 9.4 릴리스 흐름
 1. `main` merge
-2. local verify (`go test`, build, version)
+2. local verify (`swift test`, build, version)
 3. annotated tag push (`vX.Y.Z`)
 4. GitHub Release draft/publish
 5. `release.published` → Homebrew workflow
@@ -901,9 +901,10 @@ curl -fsSL https://raw.githubusercontent.com/oozoofrog/xcodecli/main/scripts/ins
 - PR
 
 작업:
-- gofmt check
-- `go test ./...`
-- `./scripts/build.sh .tmp/xcodecli`
+- `swift build`
+- `swift test`
+- `./scripts/build-swift.sh .tmp/xcodecli`
+- version 출력 검증
 
 #### `.github/workflows/homebrew-release.yml`
 트리거:

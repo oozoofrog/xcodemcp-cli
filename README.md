@@ -1,6 +1,6 @@
 # xcodecli
 
-`xcodecli` is a small Go wrapper around `xcrun mcpbridge` for local macOS use.
+`xcodecli` is a macOS CLI wrapper around `xcrun mcpbridge` for local use.
 
 ## Install
 
@@ -72,16 +72,15 @@ If a release needs to be synced manually, see `docs/releasing.md` and `./scripts
 ## Build from source
 
 ```bash
-./scripts/build.sh
-./scripts/build.sh .tmp/xcodecli
+swift build
+swift test
+./scripts/build-swift.sh .tmp/xcodecli
 ```
 
-You can also override the package or output path:
+Override version or build channel:
 
 ```bash
-OUTPUT=.tmp/xcodecli ./scripts/build.sh
-PACKAGE=./cmd/xcodecli ./scripts/build.sh
-VERSION=v0.5.4 ./scripts/build.sh
+VERSION=v0.5.4 BUILD_CHANNEL=release ./scripts/build-swift.sh .tmp/xcodecli
 ```
 
 ## Usage

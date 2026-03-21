@@ -8,8 +8,8 @@
 - The CLI code can be changed safely in isolation, but script changes affect installation paths, release flows, shared Homebrew tap state, and external automation.
 
 ## Key Files
-- `build.sh`: local reproducible build entrypoint; version/build-channel injection happens here.
-- `install.sh`: local-or-remote source installation flow, PATH guidance, and ref resolution.
+- `build-swift.sh`: local reproducible Swift build entrypoint; version/build-channel injection via sed on `Version.swift`.
+- `install.sh`: local-or-remote source installation flow, PATH guidance, and ref resolution. Requires Swift (Xcode).
 - `release_homebrew.sh`: shared tap formula generation, audit/build validation, local commit/push path, and tap safety checks.
 
 ## Local Rules
@@ -20,7 +20,7 @@
 - Script usage examples must stay aligned with current release examples in `README.md` and `docs/releasing.md`.
 
 ## Change Coupling
-- If `build.sh` changes version or output behavior, review:
+- If `build-swift.sh` changes version or output behavior, review:
   - `README.md`
   - `docs/agent-quickstart.md`
   - release instructions that mention build verification
