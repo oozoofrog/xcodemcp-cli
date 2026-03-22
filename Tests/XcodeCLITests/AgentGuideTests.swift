@@ -87,6 +87,21 @@ struct AgentGuideIntentTests {
         let result = classifyGuideIntent("build Unicody")
         #expect(result.alternatives.count <= 2)
     }
+
+    @Test("extractGuideSubject strips known workflow prefixes")
+    func extractGuideSubjectPrefixes() {
+        #expect(extractGuideSubject("build Unicody", "build") == "Unicody")
+        #expect(extractGuideSubject("run tests for Unicody", "test") == "Unicody")
+        #expect(extractGuideSubject("search for AdManager", "search") == "AdManager")
+        #expect(extractGuideSubject("update KeyboardState.swift", "edit") == "KeyboardState.swift")
+        #expect(extractGuideSubject("diagnose build errors", "diagnose") == "build errors")
+    }
+
+    @Test("file extensions boost read intent")
+    func fileExtensionBoostsRead() {
+        let result = classifyGuideIntent("KeyboardState.swift")
+        #expect(result.workflowID == "read")
+    }
 }
 
 @Suite("Agent Guide - Window Matching")
@@ -252,15 +267,11 @@ struct AgentGuideWorkflowTests {
                 alternatives: ["test", "diagnose"]
             ),
             environment: GuideEnvironment(
-                doctor: DoctorJSONReport(
-                    success: false,
-                    summary: DoctorSummary(ok: 1, warn: 1, fail: 1, info: 0),
-                    checks: [
-                        DoctorCheck(name: "xcrun lookup", status: .ok, detail: "/usr/bin/xcrun"),
-                        DoctorCheck(name: "running Xcode processes", status: .warn, detail: "no Xcode.app process detected"),
-                    ]
-                ),
-                agentStatus: AgentStatus(running: true, socketReachable: true, backendSessions: 1),
+                doctor: DoctorReport(checks: [
+                    DoctorCheck(name: "xcrun lookup", status: .ok, detail: "/usr/bin/xcrun"),
+                    DoctorCheck(name: "running Xcode processes", status: .warn, detail: "no Xcode.app process detected"),
+                ]).jsonReport,
+                agentStatus: AgentStatus(socketReachable: true, running: true, backendSessions: 1),
                 toolCatalog: GuideToolCatalog(count: 3, names: ["XcodeListWindows", "BuildProject", "GetBuildLog"], highlights: []),
                 windows: GuideWindowsResult(attempted: true, ok: true, toolName: "XcodeListWindows", entries: [
                     GuideWindowEntry(tabIdentifier: "tab-1", workspacePath: "/tmp/Unicody.xcodeproj")

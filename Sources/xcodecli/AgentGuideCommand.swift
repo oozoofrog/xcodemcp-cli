@@ -34,6 +34,30 @@ private let guideRelatedWorkflows: [String: [String]] = [
     "diagnose": ["build", "search"],
 ]
 
+private let guideIntentKeywordRules: [(workflowID: String, keywords: [String], value: Int)] = [
+    ("diagnose", ["error", "warning", "fail", "failed", "issue", "issues", "log", "diagnostic", "diagnostics"], 5),
+    ("build", ["build", "compile", "rebuild", "app", "project"], 3),
+    ("test", ["test", "tests", "xctest", "ui test", "uitest"], 4),
+    ("read", ["read", "open", "show", "view", "inspect file", "source"], 4),
+    ("search", ["find", "search", "grep", "where", "list files"], 4),
+    ("edit", ["edit", "change", "update", "replace", "write", "create", "modify"], 4),
+]
+
+private let guideIntentBoostRules: [(workflowID: String, keywords: [String], value: Int)] = [
+    ("read", [".swift", ".plist", ".xcodeproj", ".xcworkspace"], 2),
+    ("diagnose", ["build error", "build failure"], 3),
+    ("test", ["run tests", "all tests"], 3),
+]
+
+private let guideSubjectPrefixes: [String: [String]] = [
+    "build": ["build ", "compile ", "rebuild "],
+    "test": ["run all tests for ", "run tests for ", "run test for ", "test ", "tests for ", "run all tests ", "run tests "],
+    "read": ["inspect file ", "inspect ", "read ", "open ", "show ", "view ", "source "],
+    "search": ["search for ", "search ", "find ", "grep ", "where is ", "where "],
+    "edit": ["update ", "edit ", "change ", "replace ", "write ", "create ", "modify "],
+    "diagnose": ["diagnose ", "fix ", "investigate ", "debug "],
+]
+
 // MARK: - Types
 
 struct GuideIntentResult: Codable {
@@ -135,27 +159,9 @@ func classifyGuideIntent(_ raw: String) -> IntentMatch {
     }
 
     let text = trimmed.lowercased()
-    var scores: [String: Int] = [:]
-    for id in guideWorkflowOrder { scores[id] = 0 }
-
-    func addScore(_ wf: String, _ keywords: [String], _ value: Int) {
-        for kw in keywords {
-            if text.contains(kw) { scores[wf, default: 0] += value }
-        }
-    }
-
-    addScore("diagnose", ["error", "warning", "fail", "failed", "issue", "issues", "log", "diagnostic", "diagnostics"], 5)
-    addScore("build", ["build", "compile", "rebuild", "app", "project"], 3)
-    addScore("test", ["test", "tests", "xctest", "ui test", "uitest"], 4)
-    addScore("read", ["read", "open", "show", "view", "inspect file", "source"], 4)
-    addScore("search", ["find", "search", "grep", "where", "list files"], 4)
-    addScore("edit", ["edit", "change", "update", "replace", "write", "create", "modify"], 4)
-
-    if text.contains(".swift") || text.contains(".plist") || text.contains(".xcodeproj") || text.contains(".xcworkspace") {
-        scores["read", default: 0] += 2
-    }
-    if text.contains("build error") || text.contains("build failure") { scores["diagnose", default: 0] += 3 }
-    if text.contains("run tests") || text.contains("all tests") { scores["test", default: 0] += 3 }
+    var scores = Dictionary(uniqueKeysWithValues: guideWorkflowOrder.map { ($0, 0) })
+    applyGuideIntentRules(&scores, text: text, rules: guideIntentKeywordRules)
+    applyGuideIntentRules(&scores, text: text, rules: guideIntentBoostRules)
 
     var bestWorkflow = "search"
     var bestScore = 0
@@ -189,22 +195,26 @@ func classifyGuideIntent(_ raw: String) -> IntentMatch {
     )
 }
 
-private func extractGuideSubject(_ raw: String, _ workflowID: String) -> String {
+func extractGuideSubject(_ raw: String, _ workflowID: String) -> String {
     let lower = raw.lowercased()
-    let prefixes: [String: [String]] = [
-        "build": ["build ", "compile ", "rebuild "],
-        "test": ["run all tests for ", "run tests for ", "run test for ", "test ", "tests for ", "run all tests ", "run tests "],
-        "read": ["inspect file ", "inspect ", "read ", "open ", "show ", "view ", "source "],
-        "search": ["search for ", "search ", "find ", "grep ", "where is ", "where "],
-        "edit": ["update ", "edit ", "change ", "replace ", "write ", "create ", "modify "],
-        "diagnose": ["diagnose ", "fix ", "investigate ", "debug "],
-    ]
-    for prefix in prefixes[workflowID] ?? [] {
+    for prefix in guideSubjectPrefixes[workflowID] ?? [] {
         if lower.hasPrefix(prefix) {
             return String(raw.dropFirst(prefix.count)).trimmingCharacters(in: .whitespaces)
         }
     }
     return raw
+}
+
+private func applyGuideIntentRules(
+    _ scores: inout [String: Int],
+    text: String,
+    rules: [(workflowID: String, keywords: [String], value: Int)]
+) {
+    for rule in rules {
+        for keyword in rule.keywords where text.contains(keyword) {
+            scores[rule.workflowID, default: 0] += rule.value
+        }
+    }
 }
 
 // MARK: - Window Matching
