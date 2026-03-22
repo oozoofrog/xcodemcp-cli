@@ -24,19 +24,19 @@
 
 ## Change Coupling
 - CLI onboarding changes should review:
-  - `docs/agent-quickstart.md`
-  - `README.md`
-  - `cmd/xcodecli/cli.go` help text
+  - `./agent-quickstart.md`
+  - `../README.md`
+  - `../cmd/xcodecli/cli.go` help text
 - Release flow changes should review:
-  - `docs/releasing.md`
-  - `scripts/release_homebrew.sh`
-  - `.github/workflows/homebrew-release.yml`
-  - version examples in `README.md`
+  - `./releasing.md`
+  - `../scripts/release_homebrew.sh`
+  - `../.github/workflows/homebrew-release.yml`
+  - version examples in `../README.md`
 
 ## Canonical Source Notes
-- `README.md` is the repository landing page.
-- `docs/agent-quickstart.md` is the detailed first-time agent walkthrough.
-- `docs/releasing.md` is the detailed release procedure.
+- `../README.md` is the repository landing page.
+- `./agent-quickstart.md` is the detailed first-time agent walkthrough.
+- `./releasing.md` is the detailed release procedure.
 - Context documents should link to these docs, not replace them.
 
 ## Verification Notes

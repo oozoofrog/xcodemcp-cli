@@ -27,6 +27,16 @@ Use this repository when you need a CLI bridge into Xcode's MCP tools.
   - file: `--json @payload.json`
   - stdin: `--json-stdin`
 
+## Output Contract
+- Report changed files or touched documents explicitly.
+- Include the verification command you ran and whether it passed.
+- Call out remaining risks, stale references, or follow-up cleanup separately.
+
+## Review Rules
+- Findings should cite the relevant file, section, or command.
+- Prioritize correctness, broken references, and drift over stylistic praise.
+- If no issues remain after verification, say so explicitly instead of implying it.
+
 ## Failure triage
 - Retry with `--debug` on `tools list`, `tool inspect`, or `tool call`.
 - Check `./xcodecli agent status --json` for LaunchAgent and socket state.
