@@ -230,4 +230,70 @@ struct AgentGuideWorkflowTests {
         #expect(commands[4].contains("XcodeRefreshCodeIssuesInFile"))
         #expect(commands[3].contains(#""filePath":"<path from XcodeGlob>""#))
     }
+
+    @Test("buildGuideCatalogWorkflow returns one representative step per workflow and matching next commands")
+    func catalogWorkflowShape() {
+        let (workflow, nextCommands) = buildGuideCatalogWorkflow()
+        #expect(workflow.id == "catalog")
+        #expect(workflow.steps.count == guideWorkflowOrder.count)
+        #expect(nextCommands.count == guideWorkflowOrder.count)
+        #expect(workflow.fallbacks.count == 2)
+        #expect(workflow.steps.first?.toolName.contains("XcodeListWindows") == true)
+    }
+
+    @Test("formatAgentGuide includes environment notes, next commands, and fallbacks")
+    func formatAgentGuideOutput() {
+        let report = AgentGuideReport(
+            success: false,
+            intent: GuideIntentResult(
+                raw: "build Unicody",
+                workflowId: "build",
+                confidence: 0.75,
+                alternatives: ["test", "diagnose"]
+            ),
+            environment: GuideEnvironment(
+                doctor: DoctorJSONReport(
+                    success: false,
+                    summary: DoctorSummary(ok: 1, warn: 1, fail: 1, info: 0),
+                    checks: [
+                        DoctorCheck(name: "xcrun lookup", status: .ok, detail: "/usr/bin/xcrun"),
+                        DoctorCheck(name: "running Xcode processes", status: .warn, detail: "no Xcode.app process detected"),
+                    ]
+                ),
+                agentStatus: AgentStatus(running: true, socketReachable: true, backendSessions: 1),
+                toolCatalog: GuideToolCatalog(count: 3, names: ["XcodeListWindows", "BuildProject", "GetBuildLog"], highlights: []),
+                windows: GuideWindowsResult(attempted: true, ok: true, toolName: "XcodeListWindows", entries: [
+                    GuideWindowEntry(tabIdentifier: "tab-1", workspacePath: "/tmp/Unicody.xcodeproj")
+                ])
+            ),
+            workflow: GuideWorkflowResult(
+                id: "build",
+                title: "Build a project",
+                reason: "The request is about building.",
+                steps: [
+                    GuideWorkflowStep(why: "Find the right window.", toolName: "XcodeListWindows", argumentsTemplate: [:], whenToSkip: "Skip if already matched.")
+                ],
+                fallbacks: [
+                    GuideWorkflowFallback(title: "Fallback", description: "Check schema first.", commands: ["xcodecli tool inspect BuildProject --json"])
+                ]
+            ),
+            nextCommands: ["xcodecli tool call BuildProject --timeout 30m --json '{\"tabIdentifier\":\"tab-1\"}'"],
+            errors: [DemoStepError(step: "tools list", message: "temporary failure")]
+        )
+
+        let output = formatAgentGuide(
+            report,
+            GuideWindowMatch(
+                matchedEntry: GuideWindowEntry(tabIdentifier: "tab-1", workspacePath: "/tmp/Unicody.xcodeproj"),
+                note: "Matched tab-1 to /tmp/Unicody.xcodeproj."
+            )
+        )
+
+        #expect(output.contains("Intent"))
+        #expect(output.contains("Environment"))
+        #expect(output.contains("window match: Matched tab-1"))
+        #expect(output.contains("Exact Next Commands"))
+        #expect(output.contains("Fallbacks"))
+        #expect(output.contains("- tools list: temporary failure"))
+    }
 }

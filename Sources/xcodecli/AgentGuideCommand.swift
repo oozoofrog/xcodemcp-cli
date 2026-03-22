@@ -36,7 +36,7 @@ private let guideRelatedWorkflows: [String: [String]] = [
 
 // MARK: - Types
 
-private struct GuideIntentResult: Codable {
+struct GuideIntentResult: Codable {
     let raw: String
     let workflowId: String
     let confidence: Double
@@ -48,7 +48,7 @@ struct GuideWindowEntry: Codable {
     let workspacePath: String
 }
 
-private struct GuideWindowsResult: Codable {
+struct GuideWindowsResult: Codable {
     var attempted: Bool = false
     var ok: Bool = false
     let toolName: String
@@ -56,44 +56,44 @@ private struct GuideWindowsResult: Codable {
     var error: DemoStepError?
 }
 
-private struct DemoStepError: Codable {
+struct DemoStepError: Codable {
     let step: String
     let message: String
 }
 
-private struct GuideEnvironment: Codable {
+struct GuideEnvironment: Codable {
     let doctor: DoctorJSONReport
     var agentStatus: AgentStatus?
     var toolCatalog: GuideToolCatalog
     var windows: GuideWindowsResult
 }
 
-private struct GuideToolHighlight: Codable {
+struct GuideToolHighlight: Codable {
     let name: String
     let description: String
     let requiredArgs: [String]
 }
 
-private struct GuideToolCatalog: Codable {
+struct GuideToolCatalog: Codable {
     let count: Int
     let names: [String]
     let highlights: [GuideToolHighlight]
 }
 
-private struct GuideWorkflowStep: Codable {
+struct GuideWorkflowStep: Codable {
     let why: String
     let toolName: String
     let argumentsTemplate: [String: JSONValue]
     let whenToSkip: String
 }
 
-private struct GuideWorkflowFallback: Codable {
+struct GuideWorkflowFallback: Codable {
     let title: String
     let description: String
     let commands: [String]
 }
 
-private struct GuideWorkflowResult: Codable {
+struct GuideWorkflowResult: Codable {
     let id: String
     let title: String
     let reason: String
@@ -101,7 +101,7 @@ private struct GuideWorkflowResult: Codable {
     let fallbacks: [GuideWorkflowFallback]
 }
 
-private struct AgentGuideReport: Codable {
+struct AgentGuideReport: Codable {
     let success: Bool
     let intent: GuideIntentResult
     let environment: GuideEnvironment
@@ -646,7 +646,23 @@ func runAgentGuide(
         highlightToolNames: guideHighlightToolNames,
         windowsStep: "windows"
     )
+    let (report, windowMatch) = buildGuideReport(intentMatch: intentMatch, collected: collected)
 
+    if json {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        let data = try encoder.encode(report)
+        FileHandle.standardOutput.write(data)
+        FileHandle.standardOutput.write(Data("\n".utf8))
+    } else {
+        print(formatAgentGuide(report, windowMatch))
+    }
+}
+
+private func buildGuideReport(
+    intentMatch: IntentMatch,
+    collected: ReadOnlyEnvironmentCollection
+) -> (AgentGuideReport, GuideWindowMatch) {
     let toolCatalog = GuideToolCatalog(
         count: collected.toolCatalog.count,
         names: collected.toolCatalog.names,
@@ -662,38 +678,28 @@ func runAgentGuide(
         error: collected.windowsTool.error.map { DemoStepError(step: $0.step, message: $0.message) }
     )
     let errors = collected.errors.map { DemoStepError(step: $0.step, message: $0.message) }
-
     let environment = GuideEnvironment(
         doctor: collected.doctorReport.jsonReport,
         agentStatus: collected.postToolsStatus,
         toolCatalog: toolCatalog,
         windows: windows
     )
-
     let windowMatch = resolveGuideWindowMatch(entries: windows.entries, subject: intentMatch.subject)
     let (workflow, nextCommands) = buildGuideWorkflow(intentMatch, environment, windowMatch)
-
     let report = AgentGuideReport(
         success: errors.isEmpty,
         intent: GuideIntentResult(
-            raw: intentMatch.raw, workflowId: intentMatch.workflowID,
-            confidence: intentMatch.confidence, alternatives: intentMatch.alternatives
+            raw: intentMatch.raw,
+            workflowId: intentMatch.workflowID,
+            confidence: intentMatch.confidence,
+            alternatives: intentMatch.alternatives
         ),
         environment: environment,
         workflow: workflow,
         nextCommands: nextCommands,
         errors: errors
     )
-
-    if json {
-        let encoder = JSONEncoder()
-        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-        let data = try encoder.encode(report)
-        FileHandle.standardOutput.write(data)
-        FileHandle.standardOutput.write(Data("\n".utf8))
-    } else {
-        print(formatAgentGuide(report, windowMatch))
-    }
+    return (report, windowMatch)
 }
 
 // MARK: - Tool Catalog Building
@@ -1121,7 +1127,7 @@ private func buildGuideDiagnoseWorkflow(_ intent: IntentMatch, _ tabIdentifier: 
     )
 }
 
-private func buildGuideCatalogWorkflow() -> (GuideWorkflowResult, [String]) {
+func buildGuideCatalogWorkflow() -> (GuideWorkflowResult, [String]) {
     let steps = guideWorkflowOrder.map { id in
         GuideWorkflowStep(
             why: "Representative request: \"\(guideWorkflowExamples[id] ?? id)\"",
@@ -1165,72 +1171,76 @@ private func formatArgumentsTemplate(_ arguments: [String: JSONValue]) -> String
     return "{}"
 }
 
-private func formatAgentGuide(_ report: AgentGuideReport, _ windowMatch: GuideWindowMatch) -> String {
-    var b = ""
-    b += "xcodecli agent guide\n\n"
+func formatAgentGuide(_ report: AgentGuideReport, _ windowMatch: GuideWindowMatch) -> String {
+    [
+        "xcodecli agent guide",
+        formatGuideIntentSection(report),
+        formatGuideEnvironmentSection(report, windowMatch),
+        formatGuideWorkflowSection(report),
+        formatGuideNextCommandsSection(report),
+        formatGuideFallbacksSection(report),
+    ].joined(separator: "\n\n")
+}
 
-    b += "Intent\n"
-    b += "------\n"
+private func formatGuideIntentSection(_ report: AgentGuideReport) -> String {
+    var lines = ["Intent", "------"]
     let rawIntent = report.intent.raw.isEmpty ? "(none)" : report.intent.raw
-    b += "request: \(rawIntent)\n"
-    b += "workflow: \(report.intent.workflowId) (confidence \(String(format: "%.2f", report.intent.confidence)))\n"
+    lines.append("request: \(rawIntent)")
+    lines.append("workflow: \(report.intent.workflowId) (confidence \(String(format: "%.2f", report.intent.confidence)))")
     if !report.intent.alternatives.isEmpty {
-        b += "alternatives: \(report.intent.alternatives.joined(separator: ", "))\n"
+        lines.append("alternatives: \(report.intent.alternatives.joined(separator: ", "))")
     }
+    return lines.joined(separator: "\n")
+}
 
-    b += "\nEnvironment\n"
-    b += "-----------\n"
+private func formatGuideEnvironmentSection(_ report: AgentGuideReport, _ windowMatch: GuideWindowMatch) -> String {
+    var lines = ["Environment", "-----------"]
     let summary = report.environment.doctor.summary
-    b += "doctor: \(report.environment.doctor.success) (\(summary.ok) ok, \(summary.warn) warn, \(summary.fail) fail, \(summary.info) info)\n"
-    b += "tool catalog: \(report.environment.toolCatalog.count) tools\n"
+    lines.append("doctor: \(report.environment.doctor.success) (\(summary.ok) ok, \(summary.warn) warn, \(summary.fail) fail, \(summary.info) info)")
+    lines.append("tool catalog: \(report.environment.toolCatalog.count) tools")
     if let status = report.environment.agentStatus {
-        b += "launchagent: running=\(status.running) socketReachable=\(status.socketReachable) backendSessions=\(status.backendSessions)\n"
+        lines.append("launchagent: running=\(status.running) socketReachable=\(status.socketReachable) backendSessions=\(status.backendSessions)")
     }
     if report.environment.windows.attempted {
-        b += "windows: \(report.environment.windows.entries.count) discovered\n"
+        lines.append("windows: \(report.environment.windows.entries.count) discovered")
     } else {
-        b += "windows: not collected\n"
+        lines.append("windows: not collected")
     }
     if !windowMatch.note.isEmpty {
-        b += "window match: \(windowMatch.note)\n"
+        lines.append("window match: \(windowMatch.note)")
     }
     if !report.errors.isEmpty {
-        b += "notes:\n"
-        for err in report.errors {
-            b += "- \(err.step): \(err.message)\n"
-        }
+        lines.append("notes:")
+        lines.append(contentsOf: report.errors.map { "- \($0.step): \($0.message)" })
     }
+    return lines.joined(separator: "\n")
+}
 
-    b += "\nRecommended Workflow\n"
-    b += "--------------------\n"
-    b += "\(report.workflow.title) — \(report.workflow.reason)\n"
+private func formatGuideWorkflowSection(_ report: AgentGuideReport) -> String {
+    var lines = ["Recommended Workflow", "--------------------", "\(report.workflow.title) — \(report.workflow.reason)"]
     if report.workflow.id == guideWorkflowCatalog {
-        for step in report.workflow.steps {
-            b += "- \(step.toolName): \(step.why)\n"
-        }
+        lines.append(contentsOf: report.workflow.steps.map { "- \($0.toolName): \($0.why)" })
     } else {
         for (index, step) in report.workflow.steps.enumerated() {
-            b += "\(index + 1). \(step.toolName)\n"
-            b += "   why: \(step.why)\n"
-            b += "   args: \(formatArgumentsTemplate(step.argumentsTemplate))\n"
-            b += "   skip: \(step.whenToSkip)\n"
+            lines.append("\(index + 1). \(step.toolName)")
+            lines.append("   why: \(step.why)")
+            lines.append("   args: \(formatArgumentsTemplate(step.argumentsTemplate))")
+            lines.append("   skip: \(step.whenToSkip)")
         }
     }
+    return lines.joined(separator: "\n")
+}
 
-    b += "\nExact Next Commands\n"
-    b += "-------------------\n"
-    for cmd in report.nextCommands {
-        b += "- \(cmd)\n"
-    }
+private func formatGuideNextCommandsSection(_ report: AgentGuideReport) -> String {
+    let lines = ["Exact Next Commands", "-------------------"] + report.nextCommands.map { "- \($0)" }
+    return lines.joined(separator: "\n")
+}
 
-    b += "\nFallbacks\n"
-    b += "---------\n"
+private func formatGuideFallbacksSection(_ report: AgentGuideReport) -> String {
+    var lines = ["Fallbacks", "---------"]
     for fallback in report.workflow.fallbacks {
-        b += "- \(fallback.title): \(fallback.description)\n"
-        for cmd in fallback.commands {
-            b += "  \(cmd)\n"
-        }
+        lines.append("- \(fallback.title): \(fallback.description)")
+        lines.append(contentsOf: fallback.commands.map { "  \($0)" })
     }
-
-    return b
+    return lines.joined(separator: "\n")
 }
