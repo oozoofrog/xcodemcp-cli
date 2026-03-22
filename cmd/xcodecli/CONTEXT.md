@@ -30,19 +30,21 @@
 ## Change Coupling
 - If you change CLI behavior, review all of the following together:
   - command parsing and usage text
-  - `README.md` command examples
-  - `docs/agent-quickstart.md` examples
+  - [README.md](../../README.md) command examples
+  - [docs/agent-quickstart.md](../../docs/agent-quickstart.md) examples
   - affected tests in this directory
 - If you change MCP registration behavior, also check:
   - path-stability messaging
   - client-specific help text
-  - `README.md` registration examples
+  - [README.md](../../README.md) registration examples
 
 ## Verification Notes
 - Run `go test ./...` for any CLI surface change.
-- For behavior that affects built binaries or help text, also run:
-  - `./scripts/build.sh .tmp/xcodecli`
-  - `./.tmp/xcodecli version`
+- For behavior that affects built binaries or help text, also run from the repository root:
+  ```bash
+  ./scripts/build-swift.sh .tmp/xcodecli
+  ./.tmp/xcodecli version
+  ```
 - For release-facing CLI examples, confirm documentation still matches the current version string.
 
 ## Child Contexts

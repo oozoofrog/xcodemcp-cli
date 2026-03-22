@@ -1,0 +1,20 @@
+strict: false
+
+ignore_dirs:
+  - .git
+  - .tmp
+
+checks:
+  require_root_claude: true
+  allow_nested_claude: false
+
+line_limits:
+  CLAUDE.md:
+    hint: 120
+    error: 160
+  CONTEXT.md:
+    hint: 120
+  AGENTS.md:
+    hint: 100
+
+max_code_block_lines: 50
