@@ -94,11 +94,7 @@ func runAgentDemo(
     )
 
     if json {
-        let encoder = JSONEncoder()
-        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-        let data = try encoder.encode(report)
-        FileHandle.standardOutput.write(data)
-        FileHandle.standardOutput.write(Data("\n".utf8))
+        try writePrettyJSON(report)
     } else {
         print(formatAgentDemo(report))
     }

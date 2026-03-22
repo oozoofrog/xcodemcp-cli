@@ -51,11 +51,7 @@ struct DoctorCommand: AsyncParsableCommand {
         let report = await inspector.run(opts: opts)
 
         if json {
-            let encoder = JSONEncoder()
-            encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-            let data = try encoder.encode(report.jsonReport)
-            FileHandle.standardOutput.write(data)
-            FileHandle.standardOutput.write(Data("\n".utf8))
+            try writePrettyJSON(report.jsonReport)
         } else {
             print(report.textReport, terminator: "")
         }

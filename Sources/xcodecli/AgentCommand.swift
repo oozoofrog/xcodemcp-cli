@@ -144,11 +144,7 @@ struct AgentCommand: AsyncParsableCommand {
             let status = try await AgentClient.status()
 
             if json {
-                let encoder = JSONEncoder()
-                encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-                let data = try encoder.encode(status)
-                FileHandle.standardOutput.write(data)
-                FileHandle.standardOutput.write(Data("\n".utf8))
+                try writePrettyJSON(status)
             } else {
                 print(formatAgentStatus(status))
             }
