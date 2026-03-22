@@ -1,7 +1,7 @@
 import Foundation
 import XcodeCLICore
 
-/// Resolve bridge options from environment and CLI flags.
+/// Resolve bridge options from the given environment dictionary and optional overrides.
 func resolveOptions(
     env: [String: String],
     xcodePID: String?,
