@@ -55,64 +55,38 @@ func runAgentDemo(
 ) async throws {
     let env = envDictionary()
     let (effective, resolved) = try resolveOptions(env: env, xcodePID: xcodePID, sessionID: sessionID)
+    let environment = await collectReadOnlyEnvironment(
+        env: env,
+        effective: effective,
+        resolved: resolved,
+        timeout: timeout,
+        debug: debug,
+        highlightToolNames: demoHighlightToolNames,
+        windowsStep: "windows demo"
+    )
 
-    let initialStatus = try? await AgentClient.status()
-
-    let doctorInspector = DoctorInspector(processRunner: SystemProcessRunner())
-    let doctorReport = await doctorInspector.run(opts: DoctorOptions(
-        baseEnv: env, xcodePID: effective.xcodePID, sessionID: effective.sessionID,
-        sessionSource: resolved.sessionSource, sessionPath: resolved.sessionPath,
-        agentStatus: initialStatus
-    ))
-
-    var errors: [DemoDemoStepError] = []
-    let bridgeEnv = EnvOptions.applyOverrides(baseEnv: env, opts: effective)
-    let request = buildAgentRequest(env: bridgeEnv, effective: effective, timeout: TimeInterval(timeout), debug: debug)
-
-    // List tools
-    var toolCatalog = DemoToolCatalog(count: 0, names: [], highlights: [])
-    var tools: [JSONValue]?
-    do {
-        let t = try await AgentClient.listTools(request: request)
-        tools = t
-        toolCatalog = buildDemoToolCatalog(t)
-    } catch {
-        errors.append(DemoDemoStepError(step: "tools list", message: error.localizedDescription))
-    }
-
-    // Post-tools agent status
-    let postStatus = try? await AgentClient.status()
-
-    // Windows demo
-    var windowsDemo = DemoWindowsResult(toolName: demoWindowsToolName, arguments: [:])
-    if let tools {
-        if findToolByName(tools, demoWindowsToolName) == nil {
-            windowsDemo.error = DemoDemoStepError(step: "windows demo", message: "tool not found: XcodeListWindows")
-            errors.append(windowsDemo.error!)
-        } else {
-            windowsDemo.attempted = true
-            do {
-                let result = try await AgentClient.callTool(request: request, name: demoWindowsToolName, arguments: [:])
-                windowsDemo.result = result.result
-                windowsDemo.ok = !result.isError
-                if result.isError {
-                    let msg = extractToolResultMessage(result.result)
-                    windowsDemo.error = DemoDemoStepError(step: "windows demo", message: msg.isEmpty ? "tool returned isError=true" : msg)
-                    errors.append(windowsDemo.error!)
-                }
-            } catch {
-                windowsDemo.error = DemoDemoStepError(step: "windows demo", message: error.localizedDescription)
-                errors.append(windowsDemo.error!)
-            }
+    let toolCatalog = DemoToolCatalog(
+        count: environment.toolCatalog.count,
+        names: environment.toolCatalog.names,
+        highlights: environment.toolCatalog.highlights.map {
+            DemoToolHighlight(name: $0.name, description: $0.description, requiredArgs: $0.requiredArgs)
         }
-    }
-
-    let success = doctorReport.isSuccess && tools != nil && windowsDemo.attempted && windowsDemo.ok
+    )
+    let windowsDemo = DemoWindowsResult(
+        attempted: environment.windowsTool.attempted,
+        ok: environment.windowsTool.ok,
+        toolName: environment.windowsTool.toolName,
+        arguments: [:],
+        result: environment.windowsTool.result,
+        error: environment.windowsTool.error.map { DemoDemoStepError(step: $0.step, message: $0.message) }
+    )
+    let errors = environment.errors.map { DemoDemoStepError(step: $0.step, message: $0.message) }
+    let success = environment.doctorReport.isSuccess && environment.tools != nil && windowsDemo.attempted && windowsDemo.ok
 
     let report = AgentDemoReport(
         success: success,
-        doctor: doctorReport.jsonReport,
-        agentStatus: postStatus,
+        doctor: environment.doctorReport.jsonReport,
+        agentStatus: environment.postToolsStatus,
         toolCatalog: toolCatalog,
         windowsDemo: windowsDemo,
         nextCommands: agentDemoNextCommands(),

@@ -530,65 +530,37 @@ func runAgentGuide(
 ) async throws {
     let intentMatch = classifyGuideIntent(intent)
 
-    // Collect environment
     let env = envDictionary()
     let (effective, resolved) = try resolveOptions(env: env, xcodePID: xcodePID, sessionID: sessionID)
+    let collected = await collectReadOnlyEnvironment(
+        env: env,
+        effective: effective,
+        resolved: resolved,
+        timeout: timeout,
+        debug: debug,
+        highlightToolNames: guideHighlightToolNames,
+        windowsStep: "windows"
+    )
 
-    var errors: [DemoStepError] = []
-    let agentStatus = try? await AgentClient.status()
-
-    let doctorInspector = DoctorInspector(processRunner: SystemProcessRunner())
-    let doctorReport = await doctorInspector.run(opts: DoctorOptions(
-        baseEnv: env, xcodePID: effective.xcodePID, sessionID: effective.sessionID,
-        sessionSource: resolved.sessionSource, sessionPath: resolved.sessionPath,
-        agentStatus: agentStatus
-    ))
-
-    // Build agent request
-    let bridgeEnv = EnvOptions.applyOverrides(baseEnv: env, opts: effective)
-    let request = buildAgentRequest(env: bridgeEnv, effective: effective, timeout: TimeInterval(timeout), debug: debug)
-
-    // List tools
-    var toolCatalog = GuideToolCatalog(count: 0, names: [], highlights: [])
-    var tools: [JSONValue]?
-    do {
-        let t = try await AgentClient.listTools(request: request)
-        tools = t
-        toolCatalog = buildGuideToolCatalog(t)
-    } catch {
-        errors.append(DemoStepError(step: "tools list", message: error.localizedDescription))
-    }
-
-    // Agent status post-tools
-    let postStatus = try? await AgentClient.status()
-
-    // Windows
-    var windows = GuideWindowsResult(toolName: "XcodeListWindows")
-    if let tools, findToolByName(tools, "XcodeListWindows") != nil {
-        windows.attempted = true
-        do {
-            var windowReq = request
-            windowReq.method = "tools/call"
-            let result = try await AgentClient.callTool(request: request, name: "XcodeListWindows", arguments: [:])
-            windows.ok = !result.isError
-            windows.entries = parseGuideWindowEntries(result.result)
-            if result.isError {
-                let msg = extractToolResultMessage(result.result)
-                windows.error = DemoStepError(step: "windows", message: msg.isEmpty ? "tool returned isError=true" : msg)
-                errors.append(windows.error!)
-            }
-        } catch {
-            windows.error = DemoStepError(step: "windows", message: error.localizedDescription)
-            errors.append(windows.error!)
+    let toolCatalog = GuideToolCatalog(
+        count: collected.toolCatalog.count,
+        names: collected.toolCatalog.names,
+        highlights: collected.toolCatalog.highlights.map {
+            GuideToolHighlight(name: $0.name, description: $0.description, requiredArgs: $0.requiredArgs)
         }
-    } else if tools != nil {
-        windows.error = DemoStepError(step: "windows", message: "tool not found: XcodeListWindows")
-        errors.append(windows.error!)
-    }
+    )
+    let windows = GuideWindowsResult(
+        attempted: collected.windowsTool.attempted,
+        ok: collected.windowsTool.ok,
+        toolName: collected.windowsTool.toolName,
+        entries: collected.windowsTool.result.map(parseGuideWindowEntries) ?? [],
+        error: collected.windowsTool.error.map { DemoStepError(step: $0.step, message: $0.message) }
+    )
+    let errors = collected.errors.map { DemoStepError(step: $0.step, message: $0.message) }
 
     let environment = GuideEnvironment(
-        doctor: doctorReport.jsonReport,
-        agentStatus: postStatus,
+        doctor: collected.doctorReport.jsonReport,
+        agentStatus: collected.postToolsStatus,
         toolCatalog: toolCatalog,
         windows: windows
     )
