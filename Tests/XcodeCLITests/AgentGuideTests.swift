@@ -180,4 +180,54 @@ struct AgentGuideWorkflowTests {
         #expect(tokens.contains("unicody"))
         #expect(tokens.contains("release"))
     }
+
+    @Test("formatToolCallCommand renders ordered JSON arguments")
+    func formatToolCallCommandOutput() {
+        let command = formatToolCallCommand(GuideCommandSpec(
+            toolName: "XcodeGrep",
+            timeout: "60s",
+            arguments: [
+                GuideCommandArgument(key: "tabIdentifier", value: .string("tab-1")),
+                GuideCommandArgument(key: "pattern", value: .string("AdManager")),
+                GuideCommandArgument(key: "showLineNumbers", value: .bool(true)),
+            ]
+        ))
+
+        #expect(command == #"xcodecli tool call XcodeGrep --timeout 60s --json '{"tabIdentifier":"tab-1","pattern":"AdManager","showLineNumbers":true}'"#)
+    }
+
+    @Test("buildGuideBuildCommands prefixes XcodeListWindows only when no window is matched")
+    func buildCommandsPrefixBehavior() {
+        let unmatched = buildGuideBuildCommands("tab-1", GuideWindowMatch())
+        #expect(unmatched.first == "xcodecli tool call XcodeListWindows --json '{}'")
+        #expect(unmatched.count == 3)
+
+        let matched = buildGuideBuildCommands(
+            "tab-1",
+            GuideWindowMatch(matchedEntry: GuideWindowEntry(tabIdentifier: "tab-1", workspacePath: "/tmp/App.xcodeproj"))
+        )
+        #expect(matched.first != "xcodecli tool call XcodeListWindows --json '{}'")
+        #expect(matched.count == 2)
+    }
+
+    @Test("buildGuideReadCommands switches between glob and ls based on file hint")
+    func readCommandBranching() {
+        let withFileHint = buildGuideReadCommands("tab-1", "KeyboardState.swift", GuideWindowMatch())
+        #expect(withFileHint[1].contains("XcodeGlob"))
+        #expect(withFileHint[2].contains(#""filePath":"<path from XcodeGlob>""#))
+
+        let withoutFileHint = buildGuideReadCommands("tab-1", "keyboard state", GuideWindowMatch())
+        #expect(withoutFileHint[1].contains("XcodeLS"))
+        #expect(withoutFileHint[2].contains(#""filePath":"<path from XcodeLS>""#))
+    }
+
+    @Test("buildGuideEditCommands uses update and refresh commands with the selected placeholder path")
+    func editCommandSequence() {
+        let commands = buildGuideEditCommands("tab-1", "KeyboardState.swift", GuideWindowMatch())
+        #expect(commands[1].contains("XcodeGlob"))
+        #expect(commands[2].contains("XcodeRead"))
+        #expect(commands[3].contains("XcodeUpdate"))
+        #expect(commands[4].contains("XcodeRefreshCodeIssuesInFile"))
+        #expect(commands[3].contains(#""filePath":"<path from XcodeGlob>""#))
+    }
 }

@@ -400,54 +400,6 @@ private func shellQuote(_ value: String) -> String {
     "'" + value.replacingOccurrences(of: "'", with: "'\\''" ) + "'"
 }
 
-private func formatBuildProjectCommand(_ tabIdentifier: String) -> String {
-    "xcodecli tool call BuildProject --timeout 30m --json '{\"tabIdentifier\":\(jsonQuote(tabIdentifier))}'"
-}
-
-private func formatGetBuildLogCommand(_ tabIdentifier: String, _ severity: String) -> String {
-    "xcodecli tool call GetBuildLog --timeout 60s --json '{\"tabIdentifier\":\(jsonQuote(tabIdentifier)),\"severity\":\(jsonQuote(severity))}'"
-}
-
-private func formatRunAllTestsCommand(_ tabIdentifier: String) -> String {
-    "xcodecli tool call RunAllTests --timeout 30m --json '{\"tabIdentifier\":\(jsonQuote(tabIdentifier))}'"
-}
-
-private func formatGetTestListCommand(_ tabIdentifier: String) -> String {
-    "xcodecli tool call GetTestList --timeout 60s --json '{\"tabIdentifier\":\(jsonQuote(tabIdentifier))}'"
-}
-
-private func formatRunSomeTestsTemplate(_ tabIdentifier: String) -> String {
-    "xcodecli tool call RunSomeTests --timeout 30m --json '{\"tabIdentifier\":\(jsonQuote(tabIdentifier)),\"tests\":[{\"targetName\":\"<targetName>\",\"testIdentifier\":\"<identifier>\"}]}'"
-}
-
-private func formatXcodeLSCommand(_ tabIdentifier: String, _ path: String) -> String {
-    "xcodecli tool call XcodeLS --timeout 60s --json '{\"tabIdentifier\":\(jsonQuote(tabIdentifier)),\"path\":\(jsonQuote(path))}'"
-}
-
-private func formatXcodeGlobCommand(_ tabIdentifier: String, _ pattern: String) -> String {
-    "xcodecli tool call XcodeGlob --timeout 60s --json '{\"tabIdentifier\":\(jsonQuote(tabIdentifier)),\"pattern\":\(jsonQuote(pattern))}'"
-}
-
-private func formatXcodeReadCommand(_ tabIdentifier: String, _ filePath: String) -> String {
-    "xcodecli tool call XcodeRead --timeout 60s --json '{\"tabIdentifier\":\(jsonQuote(tabIdentifier)),\"filePath\":\(jsonQuote(filePath))}'"
-}
-
-private func formatXcodeGrepCommand(_ tabIdentifier: String, _ pattern: String) -> String {
-    "xcodecli tool call XcodeGrep --timeout 60s --json '{\"tabIdentifier\":\(jsonQuote(tabIdentifier)),\"pattern\":\(jsonQuote(pattern)),\"outputMode\":\"content\",\"showLineNumbers\":true}'"
-}
-
-private func formatXcodeUpdateTemplate(_ tabIdentifier: String, _ filePath: String) -> String {
-    "xcodecli tool call XcodeUpdate --timeout 120s --json '{\"tabIdentifier\":\(jsonQuote(tabIdentifier)),\"filePath\":\(jsonQuote(filePath)),\"oldString\":\"<exact text to replace>\",\"newString\":\"<replacement text>\"}'"
-}
-
-private func formatRefreshIssuesCommand(_ tabIdentifier: String, _ filePath: String) -> String {
-    "xcodecli tool call XcodeRefreshCodeIssuesInFile --timeout 120s --json '{\"tabIdentifier\":\(jsonQuote(tabIdentifier)),\"filePath\":\(jsonQuote(filePath))}'"
-}
-
-private func formatXcodeWriteTemplate(_ tabIdentifier: String, _ filePath: String) -> String {
-    "xcodecli tool call XcodeWrite --timeout 120s --json '{\"tabIdentifier\":\(jsonQuote(tabIdentifier)),\"filePath\":\(jsonQuote(filePath)),\"content\":\"<full file contents>\"}'"
-}
-
 private func formatMaybeWindowsCommand(_ windowMatch: GuideWindowMatch) -> String {
     if let entry = windowMatch.matchedEntry {
         return "# already matched \(entry.tabIdentifier)"
@@ -457,69 +409,188 @@ private func formatMaybeWindowsCommand(_ windowMatch: GuideWindowMatch) -> Strin
 
 // MARK: - Per-Workflow Command Builders
 
-private func guideCommandsPrefix(_ windowMatch: GuideWindowMatch) -> [String] {
+func guideCommandsPrefix(_ windowMatch: GuideWindowMatch) -> [String] {
     if windowMatch.matchedEntry == nil {
         return ["xcodecli tool call XcodeListWindows --json '{}'"]
     }
     return []
 }
 
-private func buildGuideBuildCommands(_ tabIdentifier: String, _ windowMatch: GuideWindowMatch) -> [String] {
-    guideCommandsPrefix(windowMatch) + [
-        formatBuildProjectCommand(tabIdentifier),
-        formatGetBuildLogCommand(tabIdentifier, "error"),
-    ]
+func buildGuideBuildCommands(_ tabIdentifier: String, _ windowMatch: GuideWindowMatch) -> [String] {
+    buildGuideCommands(windowMatch, specs: [
+        GuideCommandSpec(
+            toolName: "BuildProject",
+            timeout: "30m",
+            arguments: [GuideCommandArgument(key: "tabIdentifier", value: .string(tabIdentifier))]
+        ),
+        GuideCommandSpec(
+            toolName: "GetBuildLog",
+            timeout: "60s",
+            arguments: [
+                GuideCommandArgument(key: "tabIdentifier", value: .string(tabIdentifier)),
+                GuideCommandArgument(key: "severity", value: .string("error")),
+            ]
+        ),
+    ])
 }
 
-private func buildGuideTestCommands(_ tabIdentifier: String, _ windowMatch: GuideWindowMatch) -> [String] {
-    guideCommandsPrefix(windowMatch) + [
-        formatRunAllTestsCommand(tabIdentifier),
-        formatGetBuildLogCommand(tabIdentifier, "error"),
-    ]
+func buildGuideTestCommands(_ tabIdentifier: String, _ windowMatch: GuideWindowMatch) -> [String] {
+    buildGuideCommands(windowMatch, specs: [
+        GuideCommandSpec(
+            toolName: "RunAllTests",
+            timeout: "30m",
+            arguments: [GuideCommandArgument(key: "tabIdentifier", value: .string(tabIdentifier))]
+        ),
+        GuideCommandSpec(
+            toolName: "GetBuildLog",
+            timeout: "60s",
+            arguments: [
+                GuideCommandArgument(key: "tabIdentifier", value: .string(tabIdentifier)),
+                GuideCommandArgument(key: "severity", value: .string("error")),
+            ]
+        ),
+    ])
 }
 
-private func buildGuideReadCommands(_ tabIdentifier: String, _ subject: String, _ windowMatch: GuideWindowMatch) -> [String] {
-    var commands = guideCommandsPrefix(windowMatch)
+func buildGuideReadCommands(_ tabIdentifier: String, _ subject: String, _ windowMatch: GuideWindowMatch) -> [String] {
+    var specs: [GuideCommandSpec] = []
     if looksLikeFileHint(subject) {
-        commands.append(formatXcodeGlobCommand(tabIdentifier, guideGlobPattern(subject)))
-        commands.append(formatXcodeReadCommand(tabIdentifier, "<path from XcodeGlob>"))
+        specs.append(GuideCommandSpec(
+            toolName: "XcodeGlob",
+            timeout: "60s",
+            arguments: [
+                GuideCommandArgument(key: "tabIdentifier", value: .string(tabIdentifier)),
+                GuideCommandArgument(key: "pattern", value: .string(guideGlobPattern(subject))),
+            ]
+        ))
+        specs.append(GuideCommandSpec(
+            toolName: "XcodeRead",
+            timeout: "60s",
+            arguments: [
+                GuideCommandArgument(key: "tabIdentifier", value: .string(tabIdentifier)),
+                GuideCommandArgument(key: "filePath", value: .string("<path from XcodeGlob>")),
+            ]
+        ))
     } else {
-        commands.append(formatXcodeLSCommand(tabIdentifier, ""))
-        commands.append(formatXcodeReadCommand(tabIdentifier, "<path from XcodeLS>"))
+        specs.append(GuideCommandSpec(
+            toolName: "XcodeLS",
+            timeout: "60s",
+            arguments: [
+                GuideCommandArgument(key: "tabIdentifier", value: .string(tabIdentifier)),
+                GuideCommandArgument(key: "path", value: .string("")),
+            ]
+        ))
+        specs.append(GuideCommandSpec(
+            toolName: "XcodeRead",
+            timeout: "60s",
+            arguments: [
+                GuideCommandArgument(key: "tabIdentifier", value: .string(tabIdentifier)),
+                GuideCommandArgument(key: "filePath", value: .string("<path from XcodeLS>")),
+            ]
+        ))
     }
-    return commands
+    return buildGuideCommands(windowMatch, specs: specs)
 }
 
-private func buildGuideSearchCommands(_ tabIdentifier: String, _ subject: String, _ windowMatch: GuideWindowMatch) -> [String] {
-    var commands = guideCommandsPrefix(windowMatch)
+func buildGuideSearchCommands(_ tabIdentifier: String, _ subject: String, _ windowMatch: GuideWindowMatch) -> [String] {
+    var specs: [GuideCommandSpec] = []
     if looksLikeFileHint(subject) {
-        commands.append(formatXcodeGlobCommand(tabIdentifier, guideGlobPattern(subject)))
+        specs.append(GuideCommandSpec(
+            toolName: "XcodeGlob",
+            timeout: "60s",
+            arguments: [
+                GuideCommandArgument(key: "tabIdentifier", value: .string(tabIdentifier)),
+                GuideCommandArgument(key: "pattern", value: .string(guideGlobPattern(subject))),
+            ]
+        ))
     } else {
-        commands.append(formatXcodeGrepCommand(tabIdentifier, guideSearchPattern(subject)))
+        specs.append(GuideCommandSpec(
+            toolName: "XcodeGrep",
+            timeout: "60s",
+            arguments: [
+                GuideCommandArgument(key: "tabIdentifier", value: .string(tabIdentifier)),
+                GuideCommandArgument(key: "pattern", value: .string(guideSearchPattern(subject))),
+                GuideCommandArgument(key: "outputMode", value: .string("content")),
+                GuideCommandArgument(key: "showLineNumbers", value: .bool(true)),
+            ]
+        ))
     }
-    return commands
+    return buildGuideCommands(windowMatch, specs: specs)
 }
 
-private func buildGuideEditCommands(_ tabIdentifier: String, _ subject: String, _ windowMatch: GuideWindowMatch) -> [String] {
-    var commands = guideCommandsPrefix(windowMatch)
+func buildGuideEditCommands(_ tabIdentifier: String, _ subject: String, _ windowMatch: GuideWindowMatch) -> [String] {
+    var specs: [GuideCommandSpec] = []
     var pathPlaceholder = "<path from XcodeLS>"
     if looksLikeFileHint(subject) {
-        commands.append(formatXcodeGlobCommand(tabIdentifier, guideGlobPattern(subject)))
+        specs.append(GuideCommandSpec(
+            toolName: "XcodeGlob",
+            timeout: "60s",
+            arguments: [
+                GuideCommandArgument(key: "tabIdentifier", value: .string(tabIdentifier)),
+                GuideCommandArgument(key: "pattern", value: .string(guideGlobPattern(subject))),
+            ]
+        ))
         pathPlaceholder = "<path from XcodeGlob>"
     } else {
-        commands.append(formatXcodeLSCommand(tabIdentifier, ""))
+        specs.append(GuideCommandSpec(
+            toolName: "XcodeLS",
+            timeout: "60s",
+            arguments: [
+                GuideCommandArgument(key: "tabIdentifier", value: .string(tabIdentifier)),
+                GuideCommandArgument(key: "path", value: .string("")),
+            ]
+        ))
     }
-    commands.append(formatXcodeReadCommand(tabIdentifier, pathPlaceholder))
-    commands.append(formatXcodeUpdateTemplate(tabIdentifier, pathPlaceholder))
-    commands.append(formatRefreshIssuesCommand(tabIdentifier, pathPlaceholder))
-    return commands
+    specs.append(contentsOf: [
+        GuideCommandSpec(
+            toolName: "XcodeRead",
+            timeout: "60s",
+            arguments: [
+                GuideCommandArgument(key: "tabIdentifier", value: .string(tabIdentifier)),
+                GuideCommandArgument(key: "filePath", value: .string(pathPlaceholder)),
+            ]
+        ),
+        GuideCommandSpec(
+            toolName: "XcodeUpdate",
+            timeout: "120s",
+            arguments: [
+                GuideCommandArgument(key: "tabIdentifier", value: .string(tabIdentifier)),
+                GuideCommandArgument(key: "filePath", value: .string(pathPlaceholder)),
+                GuideCommandArgument(key: "oldString", value: .string("<exact text to replace>")),
+                GuideCommandArgument(key: "newString", value: .string("<replacement text>")),
+            ]
+        ),
+        GuideCommandSpec(
+            toolName: "XcodeRefreshCodeIssuesInFile",
+            timeout: "120s",
+            arguments: [
+                GuideCommandArgument(key: "tabIdentifier", value: .string(tabIdentifier)),
+                GuideCommandArgument(key: "filePath", value: .string(pathPlaceholder)),
+            ]
+        ),
+    ])
+    return buildGuideCommands(windowMatch, specs: specs)
 }
 
-private func buildGuideDiagnoseCommands(_ tabIdentifier: String, _ windowMatch: GuideWindowMatch) -> [String] {
-    guideCommandsPrefix(windowMatch) + [
-        formatGetBuildLogCommand(tabIdentifier, "error"),
-        formatXcodeReadCommand(tabIdentifier, "<file path from the log or issue navigator>"),
-    ]
+func buildGuideDiagnoseCommands(_ tabIdentifier: String, _ windowMatch: GuideWindowMatch) -> [String] {
+    buildGuideCommands(windowMatch, specs: [
+        GuideCommandSpec(
+            toolName: "GetBuildLog",
+            timeout: "60s",
+            arguments: [
+                GuideCommandArgument(key: "tabIdentifier", value: .string(tabIdentifier)),
+                GuideCommandArgument(key: "severity", value: .string("error")),
+            ]
+        ),
+        GuideCommandSpec(
+            toolName: "XcodeRead",
+            timeout: "60s",
+            arguments: [
+                GuideCommandArgument(key: "tabIdentifier", value: .string(tabIdentifier)),
+                GuideCommandArgument(key: "filePath", value: .string("<file path from the log or issue navigator>")),
+            ]
+        ),
+    ])
 }
 
 // MARK: - Entry Point
@@ -687,7 +758,11 @@ private func buildGuideBuildWorkflow(_ intent: IntentMatch, _ tabIdentifier: Str
             description: "Re-check the live Xcode windows and swap in the exact tabIdentifier yourself.",
             commands: [
                 "xcodecli tool call XcodeListWindows --json '{}'",
-                formatBuildProjectCommand("<tabIdentifier from above>"),
+                formatToolCallCommand(GuideCommandSpec(
+                    toolName: "BuildProject",
+                    timeout: "30m",
+                    arguments: [GuideCommandArgument(key: "tabIdentifier", value: .string("<tabIdentifier from above>"))]
+                )),
             ]
         ),
         guideSchemaFallback(tools: ["BuildProject", "GetBuildLog"]),
@@ -730,8 +805,30 @@ private func buildGuideTestWorkflow(_ intent: IntentMatch, _ tabIdentifier: Stri
             title: "If you need to run only some tests",
             description: "Enumerate the available tests first, then switch to RunSomeTests with targetName and testIdentifier values from the list.",
             commands: [
-                formatGetTestListCommand(tabIdentifier),
-                formatRunSomeTestsTemplate(tabIdentifier),
+                formatToolCallCommand(GuideCommandSpec(
+                    toolName: "GetTestList",
+                    timeout: "60s",
+                    arguments: [GuideCommandArgument(key: "tabIdentifier", value: .string(tabIdentifier))]
+                )),
+                formatToolCallCommand(GuideCommandSpec(
+                    toolName: "RunSomeTests",
+                    timeout: "30m",
+                    arguments: [
+                        GuideCommandArgument(
+                            key: "tabIdentifier",
+                            value: .string(tabIdentifier)
+                        ),
+                        GuideCommandArgument(
+                            key: "tests",
+                            value: .array([
+                                .object([
+                                    "targetName": .string("<targetName>"),
+                                    "testIdentifier": .string("<identifier>"),
+                                ])
+                            ])
+                        ),
+                    ]
+                )),
             ]
         ),
         guideSchemaFallback(tools: ["GetTestList", "RunSomeTests"]),
@@ -782,7 +879,14 @@ private func buildGuideReadWorkflow(_ intent: IntentMatch, _ tabIdentifier: Stri
             description: "Browse the project tree manually before opening the file.",
             commands: [
                 formatMaybeWindowsCommand(windowMatch),
-                formatXcodeLSCommand(tabIdentifier, ""),
+                formatToolCallCommand(GuideCommandSpec(
+                    toolName: "XcodeLS",
+                    timeout: "60s",
+                    arguments: [
+                        GuideCommandArgument(key: "tabIdentifier", value: .string(tabIdentifier)),
+                        GuideCommandArgument(key: "path", value: .string("")),
+                    ]
+                )),
             ]
         ),
         guideSchemaFallback(tools: [lookupTool, "XcodeRead"]),
@@ -893,7 +997,15 @@ private func buildGuideEditWorkflow(_ intent: IntentMatch, _ tabIdentifier: Stri
             description: "Switch from XcodeUpdate to XcodeWrite once you know the entire target file contents.",
             commands: [
                 "xcodecli tool inspect XcodeWrite --json",
-                formatXcodeWriteTemplate(tabIdentifier, pathPlaceholder),
+                formatToolCallCommand(GuideCommandSpec(
+                    toolName: "XcodeWrite",
+                    timeout: "120s",
+                    arguments: [
+                        GuideCommandArgument(key: "tabIdentifier", value: .string(tabIdentifier)),
+                        GuideCommandArgument(key: "filePath", value: .string(pathPlaceholder)),
+                        GuideCommandArgument(key: "content", value: .string("<full file contents>")),
+                    ]
+                )),
             ]
         ),
         guideSchemaFallback(tools: ["XcodeUpdate", "XcodeRefreshCodeIssuesInFile"]),
@@ -943,7 +1055,14 @@ private func buildGuideDiagnoseWorkflow(_ intent: IntentMatch, _ tabIdentifier: 
             title: "If the problem is obviously file-specific",
             description: "Jump straight from the build log to XcodeRead for the failing file.",
             commands: [
-                formatXcodeReadCommand(tabIdentifier, "<file path from the log>"),
+                formatToolCallCommand(GuideCommandSpec(
+                    toolName: "XcodeRead",
+                    timeout: "60s",
+                    arguments: [
+                        GuideCommandArgument(key: "tabIdentifier", value: .string(tabIdentifier)),
+                        GuideCommandArgument(key: "filePath", value: .string("<file path from the log>")),
+                    ]
+                )),
             ]
         ),
     ]
