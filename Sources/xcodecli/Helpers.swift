@@ -20,7 +20,7 @@ func resolveOptions(
     return (effective, resolved)
 }
 
-/// Build an AgentRequest from CLI flags, resolving environment and session in one step.
+/// Build an AgentRequest by resolving session options from the given environment dictionary.
 func buildBridgeRequest(
     env: [String: String],
     xcodePID: String?,

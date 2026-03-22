@@ -36,4 +36,30 @@ struct BridgeRequestSupportTests {
         #expect(request.sessionID == "22222222-2222-2222-2222-222222222222")
         #expect(request.debug == false)
     }
+
+    @Test("buildBridgeRequest propagates validation error for invalid PID")
+    func invalidPIDThrows() {
+        #expect(throws: XcodeCLIError.self) {
+            _ = try buildBridgeRequest(
+                env: [:],
+                xcodePID: "notANumber",
+                sessionID: "33333333-3333-3333-3333-333333333333",
+                timeout: 60,
+                debug: false
+            )
+        }
+    }
+
+    @Test("buildBridgeRequest propagates validation error for invalid session ID")
+    func invalidSessionIDThrows() {
+        #expect(throws: XcodeCLIError.self) {
+            _ = try buildBridgeRequest(
+                env: [:],
+                xcodePID: nil,
+                sessionID: "not-a-valid-uuid",
+                timeout: 60,
+                debug: false
+            )
+        }
+    }
 }

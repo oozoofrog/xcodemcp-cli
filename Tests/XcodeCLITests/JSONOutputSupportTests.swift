@@ -1,5 +1,6 @@
 import Testing
 import Foundation
+import ArgumentParser
 @testable import xcodecli
 import XcodeCLICore
 
@@ -52,16 +53,16 @@ struct JSONOutputSupportTests {
         #expect(result["count"] == .int(42))
     }
 
-    @Test("parseJSONArguments throws on non-object JSON")
+    @Test("parseJSONArguments throws ValidationError on non-object JSON")
     func parseNonObject() {
-        #expect(throws: (any Error).self) {
+        #expect(throws: ValidationError.self) {
             _ = try parseJSONArguments("[1, 2, 3]")
         }
     }
 
-    @Test("parseJSONArguments throws on invalid JSON")
+    @Test("parseJSONArguments throws DecodingError on invalid JSON")
     func parseInvalidJSON() {
-        #expect(throws: (any Error).self) {
+        #expect(throws: DecodingError.self) {
             _ = try parseJSONArguments("not json at all")
         }
     }
