@@ -62,11 +62,7 @@ struct MCPCommand: AsyncParsableCommand {
             }
 
             if json {
-                let encoder = JSONEncoder()
-                encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-                let data = try encoder.encode(result)
-                FileHandle.standardOutput.write(data)
-                FileHandle.standardOutput.write(Data("\n".utf8))
+                try writePrettyJSON(result)
             } else {
                 print(formatMCPConfigResult(result))
             }

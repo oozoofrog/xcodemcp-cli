@@ -60,6 +60,17 @@ struct ToolCatalogSupportTests {
         #expect(requiredArgsFromTool(malformedTool).isEmpty)
     }
 
+    @Test("toolName returns name or empty string for non-object values")
+    func toolNameExtraction() {
+        let named: JSONValue = .object(["name": .string("BuildProject")])
+        let unnamed: JSONValue = .object(["description": .string("no name")])
+        let nonObject: JSONValue = .string("not a tool")
+
+        #expect(toolName(named) == "BuildProject")
+        #expect(toolName(unnamed).isEmpty)
+        #expect(toolName(nonObject).isEmpty)
+    }
+
     @Test("toolDescription returns empty string when description is missing")
     func toolDescriptionFallback() {
         let described: JSONValue = .object([

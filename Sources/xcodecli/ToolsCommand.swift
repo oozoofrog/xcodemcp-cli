@@ -31,32 +31,23 @@ struct ToolsCommand: AsyncParsableCommand {
         var debug = false
 
         func run() async throws {
-            let env = envDictionary()
-            let (effective, _) = try resolveOptions(env: env, xcodePID: xcodePID, sessionID: sessionID)
-            let bridgeEnv = EnvOptions.applyOverrides(baseEnv: env, opts: effective)
-
-            let request = buildAgentRequest(
-                env: bridgeEnv, effective: effective,
+            let request = try buildBridgeRequest(
+                xcodePID: xcodePID, sessionID: sessionID,
                 timeout: TimeInterval(timeout), debug: debug
             )
             let tools = try await AgentClient.listTools(request: request)
 
             if json {
-                let encoder = JSONEncoder()
-                encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-                let data = try encoder.encode(tools)
-                FileHandle.standardOutput.write(data)
-                FileHandle.standardOutput.write(Data("\n".utf8))
+                try writePrettyJSON(tools)
             } else {
                 for tool in tools {
-                    if case .object(let obj) = tool {
-                        let name = obj["name"].flatMap { if case .string(let s) = $0 { return s } else { return nil } } ?? ""
-                        let desc = obj["description"].flatMap { if case .string(let s) = $0 { return s } else { return nil } } ?? ""
-                        if desc.isEmpty {
-                            print(name)
-                        } else {
-                            print("\(name)\t\(desc)")
-                        }
+                    let name = toolName(tool)
+                    guard !name.isEmpty else { continue }
+                    let desc = toolDescription(tool)
+                    if desc.isEmpty {
+                        print(name)
+                    } else {
+                        print("\(name)\t\(desc)")
                     }
                 }
             }

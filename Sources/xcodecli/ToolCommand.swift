@@ -34,41 +34,24 @@ struct ToolCommand: AsyncParsableCommand {
         var debug = false
 
         func run() async throws {
-            let env = envDictionary()
-            let (effective, _) = try resolveOptions(env: env, xcodePID: xcodePID, sessionID: sessionID)
-            let bridgeEnv = EnvOptions.applyOverrides(baseEnv: env, opts: effective)
-
-            let request = buildAgentRequest(
-                env: bridgeEnv, effective: effective,
+            let request = try buildBridgeRequest(
+                xcodePID: xcodePID, sessionID: sessionID,
                 timeout: TimeInterval(timeout), debug: debug
             )
             let tools = try await AgentClient.listTools(request: request)
 
-            guard let tool = tools.first(where: {
-                if case .object(let obj) = $0, case .string(let n) = obj["name"] { return n == name }
-                return false
-            }) else {
+            guard let tool = findToolByName(tools, name) else {
                 throw ValidationError("tool not found: \(name)")
             }
 
             if json {
-                let encoder = JSONEncoder()
-                encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-                let data = try encoder.encode(tool)
-                FileHandle.standardOutput.write(data)
-                FileHandle.standardOutput.write(Data("\n".utf8))
+                try writePrettyJSON(tool)
             } else if case .object(let obj) = tool {
-                let toolName = obj["name"].flatMap { if case .string(let s) = $0 { return s } else { return nil } } ?? ""
-                let desc = obj["description"].flatMap { if case .string(let s) = $0 { return s } else { return nil } } ?? ""
-                print("name: \(toolName)")
-                print("description: \(desc)")
+                print("name: \(toolName(tool))")
+                print("description: \(toolDescription(tool))")
                 print("inputSchema:")
                 if let schema = obj["inputSchema"] {
-                    let encoder = JSONEncoder()
-                    encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-                    let data = try encoder.encode(schema)
-                    FileHandle.standardOutput.write(data)
-                    FileHandle.standardOutput.write(Data("\n".utf8))
+                    try writePrettyJSON(schema)
                 }
             }
         }
@@ -126,36 +109,20 @@ struct ToolCommand: AsyncParsableCommand {
             // Apply tool-specific default timeout if not explicitly set
             let effectiveTimeout = timeout ?? Int(TimeoutPolicy.defaultToolCallTimeout(toolName: name))
 
-            let env = envDictionary()
-            let (effective, _) = try resolveOptions(env: env, xcodePID: xcodePID, sessionID: sessionID)
-            let bridgeEnv = EnvOptions.applyOverrides(baseEnv: env, opts: effective)
-
-            let request = buildAgentRequest(
-                env: bridgeEnv, effective: effective,
+            let request = try buildBridgeRequest(
+                xcodePID: xcodePID, sessionID: sessionID,
                 timeout: TimeInterval(effectiveTimeout), debug: debug
             )
             let result = try await AgentClient.callTool(
                 request: request, name: name, arguments: arguments
             )
 
-            let encoder = JSONEncoder()
-            encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-            let data = try encoder.encode(result.result)
-            FileHandle.standardOutput.write(data)
-            FileHandle.standardOutput.write(Data("\n".utf8))
+            try writePrettyJSON(result.result)
 
             if result.isError {
                 throw ExitCode(1)
             }
         }
 
-        private func parseJSONArguments(_ raw: String) throws -> [String: JSONValue] {
-            let data = Data(raw.utf8)
-            let value = try JSONDecoder().decode(JSONValue.self, from: data)
-            guard case .object(let obj) = value else {
-                throw ValidationError("JSON payload must decode to a JSON object")
-            }
-            return obj
-        }
     }
 }

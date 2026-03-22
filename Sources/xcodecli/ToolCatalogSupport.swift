@@ -37,6 +37,15 @@ func requiredArgsFromTool(_ tool: JSONValue) -> [String] {
     }
 }
 
+func toolName(_ tool: JSONValue) -> String {
+    guard case .object(let obj) = tool,
+          case .string(let name) = obj["name"]
+    else {
+        return ""
+    }
+    return name
+}
+
 func toolDescription(_ tool: JSONValue) -> String {
     guard case .object(let obj) = tool,
           case .string(let description) = obj["description"]
