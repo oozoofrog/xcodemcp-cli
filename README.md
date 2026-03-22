@@ -31,7 +31,7 @@ curl -fsSL https://raw.githubusercontent.com/oozoofrog/xcodecli/main/scripts/ins
 Install a specific tag or branch:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/oozoofrog/xcodecli/main/scripts/install.sh | bash -s -- --ref v0.5.4
+curl -fsSL https://raw.githubusercontent.com/oozoofrog/xcodecli/main/scripts/install.sh | bash -s -- --ref v1.0.0
 curl -fsSL https://raw.githubusercontent.com/oozoofrog/xcodecli/main/scripts/install.sh | bash -s -- --ref main
 ```
 
@@ -80,7 +80,7 @@ swift test
 Override version or build channel:
 
 ```bash
-VERSION=v0.5.4 BUILD_CHANNEL=release ./scripts/build-swift.sh .tmp/xcodecli
+VERSION=v1.0.0 BUILD_CHANNEL=release ./scripts/build-swift.sh .tmp/xcodecli
 ```
 
 ## Usage
@@ -220,14 +220,14 @@ After `agent guide` and `agent demo`, the next likely usability improvement is a
 
 ## Versioning strategy
 
-The project continues to use pre-1.0 semantic versioning tags with the following release policy:
+The project now uses stable semantic versioning tags with the following release policy:
 
-- `v0.2.1`, `v0.2.2`, ...: patch releases for bug fixes, CI/test hardening, documentation corrections, and internal refactors that do not intentionally expand the public CLI surface.
-- `v0.3.0`, `v0.4.0`, ...: minor releases for new commands, new flags, new output modes, default-behavior expansions, or materially new LaunchAgent / MCP capabilities.
-- Breaking CLI behavior is avoided when possible. Before `v1.0.0`, any unavoidable breaking change should ship in a new minor release and must be called out explicitly in `CHANGELOG.md` and the GitHub Release notes.
+- `v1.0.1`, `v1.0.2`, ...: patch releases for bug fixes, CI/test hardening, documentation corrections, and internal refactors that do not intentionally expand the public CLI surface.
+- `v1.1.0`, `v1.2.0`, ...: minor releases for new commands, new flags, new output modes, default-behavior expansions, or materially new LaunchAgent / MCP capabilities.
+- Breaking CLI behavior is avoided when possible. Any unavoidable breaking change should ship in a new major release and must be called out explicitly in `CHANGELOG.md` and the GitHub Release notes.
 - Releases should be cut from `main` only after CI is green.
 - Tags should remain annotated `vMAJOR.MINOR.PATCH` tags, and GitHub Releases should continue to use generated notes unless a release needs hand-written upgrade guidance.
-- The active maintenance line is `v0.5.x`. Small fixes should prefer the next patch tag on that line before opening a new minor series.
+- The active maintenance line is `v1.0.x`. Small fixes should prefer the next patch tag on that line before opening a new minor series.
 
 ## Notes
 

@@ -6,7 +6,7 @@ This guide is for a first-time agent or automation that needs to discover and ca
 
 ```bash
 cd /path/to/xcodecli
-./scripts/build.sh
+./scripts/build-swift.sh .tmp/xcodecli
 ```
 
 ## 2. Start with the user's intent

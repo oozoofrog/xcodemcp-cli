@@ -1,6 +1,6 @@
 # xcodecli Implementation Specification
 
-> Baseline version: `v0.5.4`
+> Baseline version: `v1.0.0`
 >
 > This document describes `xcodecli` at a level detailed enough to reimplement it in another language, including its public CLI contract, internal architecture, protocols, persistence rules, installation flow, release flow, and operational assumptions.
 >
@@ -35,7 +35,7 @@
 
 ### 1.2 Product Type
 - macOS-only CLI tool
-- A Go-based operator-friendly wrapper around `xcrun mcpbridge`
+- A Swift-based operator-friendly wrapper around `xcrun mcpbridge`
 
 ### 1.3 Core Responsibilities
 - Provide a raw stdio bridge to `xcrun mcpbridge`
@@ -270,8 +270,8 @@ xcodecli --version
 ```
 
 #### Output
-- release build: `xcodecli v0.5.4`
-- dev build: `xcodecli v0.5.4 (dev)`
+- release build: `xcodecli v1.0.0`
+- dev build: `xcodecli v1.0.0 (dev)`
 
 
 ### 6.4 `update`
@@ -285,7 +285,7 @@ xcodecli update
 
 #### Algorithm
 1. Resolve the current `xcodecli` executable path.
-2. Fail if the path looks like a temporary Go build output.
+2. Fail if the path looks like a temporary Swift/Xcode build output.
 3. Detect whether the binary is Homebrew-managed via `brew --prefix oozoofrog/tap/xcodecli`.
 4. If Homebrew-managed, run `brew upgrade oozoofrog/tap/xcodecli`.
 5. Otherwise query the latest semantic-version release tag with `git ls-remote --refs --tags`.
@@ -293,12 +293,12 @@ xcodecli update
 7. Verify the new binary with `version` output.
 
 #### Output examples
-- already current via Homebrew: `xcodecli is already up to date via Homebrew (v0.5.4)`
-- updated direct install: `updated xcodecli: v0.5.1 -> v0.5.4`
+- already current via Homebrew: `xcodecli is already up to date via Homebrew (v1.0.0)`
+- updated direct install: `updated xcodecli: v0.9.9 -> v1.0.0`
 
 #### Notes
 - Any non-Homebrew path is treated as a direct install.
-- Direct-install updates require `curl`, `git`, `tar`, and `go` on PATH.
+- Direct-install updates require `curl`, `git`, `tar`, and Xcode/Swift on PATH.
 
 ### 6.5 `bridge`
 #### Usage
@@ -376,7 +376,7 @@ Response example (success):
   "result": {
     "protocolVersion": "2025-11-25",
     "capabilities": {"tools": {}},
-    "serverInfo": {"name": "xcodecli", "version": "v0.5.4"}
+    "serverInfo": {"name": "xcodecli", "version": "v1.0.0"}
   }
 }
 ```
@@ -857,7 +857,7 @@ brew install oozoofrog/tap/xcodecli
 #### Direct GitHub install
 ```bash
 curl -fsSL https://raw.githubusercontent.com/oozoofrog/xcodecli/main/scripts/install.sh | bash
-curl -fsSL https://raw.githubusercontent.com/oozoofrog/xcodecli/main/scripts/install.sh | bash -s -- --ref v0.5.4
+curl -fsSL https://raw.githubusercontent.com/oozoofrog/xcodecli/main/scripts/install.sh | bash -s -- --ref v1.0.0
 ```
 
 #### Local checkout install

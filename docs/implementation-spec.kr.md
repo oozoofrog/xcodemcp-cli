@@ -1,6 +1,6 @@
 # xcodecli 구현 명세서
 
-> Baseline version: `v0.5.4`
+> Baseline version: `v1.0.0`
 >
 > 이 문서는 `xcodecli`의 공개 기능, 내부 구조, 프로토콜, 설치/배포/운영 규칙을 **다른 언어에서도 재구현 가능한 수준**으로 정리한 기술 명세서입니다.
 >
@@ -35,7 +35,7 @@
 
 ### 1.2 제품 유형
 - macOS 전용 CLI 도구
-- `xcrun mcpbridge`를 감싸는 Go 기반 operator-friendly wrapper
+- `xcrun mcpbridge`를 감싸는 Swift 기반 operator-friendly wrapper
 
 ### 1.3 핵심 역할
 - raw stdio bridge 제공
@@ -270,8 +270,8 @@ xcodecli --version
 ```
 
 #### 출력
-- release build: `xcodecli v0.5.4`
-- dev build: `xcodecli v0.5.4 (dev)`
+- release build: `xcodecli v1.0.0`
+- dev build: `xcodecli v1.0.0 (dev)`
 
 
 ### 6.4 `update`
@@ -285,7 +285,7 @@ xcodecli update
 
 #### 동작 알고리즘
 1. 현재 실행 중인 `xcodecli` 바이너리 경로를 해석한다.
-2. 경로가 임시 Go build 산출물처럼 보이면 실패한다.
+2. 경로가 임시 Swift/Xcode build 산출물처럼 보이면 실패한다.
 3. `brew --prefix oozoofrog/tap/xcodecli`로 Homebrew 관리 설치인지 확인한다.
 4. Homebrew 설치면 `brew upgrade oozoofrog/tap/xcodecli`를 실행한다.
 5. Homebrew가 아니면 `git ls-remote --refs --tags`로 최신 semantic-version release tag를 찾는다.
@@ -293,12 +293,12 @@ xcodecli update
 7. 새 바이너리의 `version` 출력을 확인한다.
 
 #### 출력 예
-- Homebrew 최신 상태: `xcodecli is already up to date via Homebrew (v0.5.4)`
-- 직접 설치 업데이트 완료: `updated xcodecli: v0.5.1 -> v0.5.4`
+- Homebrew 최신 상태: `xcodecli is already up to date via Homebrew (v1.0.0)`
+- 직접 설치 업데이트 완료: `updated xcodecli: v0.9.9 -> v1.0.0`
 
 #### 노트
 - Homebrew가 아닌 경로는 모두 직접 설치로 간주한다.
-- 직접 설치 업데이트에는 `curl`, `git`, `tar`, `go`가 필요하다.
+- 직접 설치 업데이트에는 `curl`, `git`, `tar`, Xcode/Swift가 필요하다.
 
 ### 6.5 `bridge`
 #### 사용법
@@ -376,7 +376,7 @@ xcodecli serve [--xcode-pid PID] [--session-id UUID] [--debug]
   "result": {
     "protocolVersion": "2025-11-25",
     "capabilities": {"tools": {}},
-    "serverInfo": {"name": "xcodecli", "version": "v0.5.4"}
+    "serverInfo": {"name": "xcodecli", "version": "v1.0.0"}
   }
 }
 ```
@@ -857,7 +857,7 @@ brew install oozoofrog/tap/xcodecli
 #### GitHub 직접 설치
 ```bash
 curl -fsSL https://raw.githubusercontent.com/oozoofrog/xcodecli/main/scripts/install.sh | bash
-curl -fsSL https://raw.githubusercontent.com/oozoofrog/xcodecli/main/scripts/install.sh | bash -s -- --ref v0.5.4
+curl -fsSL https://raw.githubusercontent.com/oozoofrog/xcodecli/main/scripts/install.sh | bash -s -- --ref v1.0.0
 ```
 
 #### 로컬 checkout 설치
