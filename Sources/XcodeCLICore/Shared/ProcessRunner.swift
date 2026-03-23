@@ -71,15 +71,35 @@ public struct SystemProcessRunner: ProcessRunning {
         }
 
         try process.run()
-        process.waitUntilExit()
 
-        let stdoutData = stdoutPipe.fileHandleForReading.readDataToEndOfFile()
-        let stderrData = stderrPipe.fileHandleForReading.readDataToEndOfFile()
+        // Read pipes concurrently BEFORE waitUntilExit to avoid deadlock.
+        // If the subprocess fills the pipe buffer (~64KB) while the parent
+        // is blocked on waitUntilExit, both processes deadlock.
+        async let stdoutData = Self.readAll(from: stdoutPipe.fileHandleForReading)
+        async let stderrData = Self.readAll(from: stderrPipe.fileHandleForReading)
+
+        let exitCode = await withCheckedContinuation { continuation in
+            process.terminationHandler = { proc in
+                continuation.resume(returning: proc.terminationStatus)
+            }
+        }
+
+        let out = await stdoutData
+        let err = await stderrData
 
         return ProcessResult(
-            stdout: String(data: stdoutData, encoding: .utf8) ?? "",
-            stderr: String(data: stderrData, encoding: .utf8) ?? "",
-            exitCode: process.terminationStatus
+            stdout: String(data: out, encoding: .utf8) ?? "",
+            stderr: String(data: err, encoding: .utf8) ?? "",
+            exitCode: exitCode
         )
+    }
+
+    private static func readAll(from handle: FileHandle) async -> Data {
+        await withCheckedContinuation { continuation in
+            DispatchQueue.global().async {
+                let data = handle.readDataToEndOfFile()
+                continuation.resume(returning: data)
+            }
+        }
     }
 }

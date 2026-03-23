@@ -374,12 +374,23 @@ public struct DoctorInspector: Sendable {
             )
             let startedAt = ContinuousClock.now
             do {
-                let result = try await processRunner.run(
-                    path, arguments: ["mcpbridge"],
-                    environment: smokeEnv,
-                    workingDirectory: nil,
-                    stdinData: Data() // empty stdin, closes immediately
-                )
+                let result = try await withThrowingTaskGroup(of: ProcessResult.self) { group in
+                    group.addTask {
+                        try await processRunner.run(
+                            path, arguments: ["mcpbridge"],
+                            environment: smokeEnv,
+                            workingDirectory: nil,
+                            stdinData: Data()
+                        )
+                    }
+                    group.addTask {
+                        try await Task.sleep(for: .seconds(2))
+                        throw SmokeTestTimeout()
+                    }
+                    let result = try await group.next()!
+                    group.cancelAll()
+                    return result
+                }
                 let elapsed = ContinuousClock.now - startedAt
                 if result.exitCode == 0 {
                     checks.append(DoctorCheck(
@@ -392,6 +403,11 @@ public struct DoctorInspector: Sendable {
                         detail: formatCommandFailure(exitCode: result.exitCode, stderr: result.stderr, stdout: result.stdout)
                     ))
                 }
+            } catch is SmokeTestTimeout {
+                checks.append(DoctorCheck(
+                    name: "spawn smoke test", status: .fail,
+                    detail: "timed out waiting for xcrun mcpbridge to exit with closed stdin"
+                ))
             } catch {
                 checks.append(DoctorCheck(
                     name: "spawn smoke test", status: .fail, detail: error.localizedDescription
@@ -533,3 +549,5 @@ public func parseProcessList(_ output: String) -> [XcodeProcess] {
         return XcodeProcess(pid: pid, command: cmd)
     }
 }
+
+private struct SmokeTestTimeout: Error {}
