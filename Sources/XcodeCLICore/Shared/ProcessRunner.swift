@@ -71,10 +71,19 @@ public struct SystemProcessRunner: ProcessRunning {
         }
 
         try process.run()
+
+        // Read pipe data concurrently with process execution to avoid deadlock.
+        // If the child produces more output than the pipe buffer (64 KB on macOS),
+        // waitUntilExit() and the child's write() would deadlock.
+        // Drain pipes on background threads to prevent deadlock when output
+        // exceeds the pipe buffer (64 KB on macOS).
+        let stdoutReader = Task.detached { stdoutPipe.fileHandleForReading.readDataToEndOfFile() }
+        let stderrReader = Task.detached { stderrPipe.fileHandleForReading.readDataToEndOfFile() }
+
         process.waitUntilExit()
 
-        let stdoutData = stdoutPipe.fileHandleForReading.readDataToEndOfFile()
-        let stderrData = stderrPipe.fileHandleForReading.readDataToEndOfFile()
+        let stdoutData = await stdoutReader.value
+        let stderrData = await stderrReader.value
 
         return ProcessResult(
             stdout: String(data: stdoutData, encoding: .utf8) ?? "",
