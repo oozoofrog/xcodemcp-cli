@@ -1,5 +1,5 @@
 public enum Version {
-    public static let source = "v1.0.0"
+    public static let source = "v1.0.1"
 
     /// Replaced at build time by scripts/build-swift.sh via sed.
     /// When building with `swift build` directly, stays equal to `source`.
