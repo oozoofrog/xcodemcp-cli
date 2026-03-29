@@ -231,7 +231,7 @@ The project now uses stable semantic versioning tags with the following release 
 - Breaking CLI behavior is avoided when possible. Any unavoidable breaking change should ship in a new major release and must be called out explicitly in `CHANGELOG.md` and the GitHub Release notes.
 - Releases should be cut from `main` only after CI is green.
 - Tags should remain annotated `vMAJOR.MINOR.PATCH` tags, and GitHub Releases should continue to use generated notes unless a release needs hand-written upgrade guidance.
-- The active maintenance line is `v1.0.x`. Small fixes should prefer the next patch tag on that line before opening a new minor series.
+- The active maintenance line is `v1.1.x`. Small fixes should prefer the next patch tag on that line before opening a new minor series.
 
 ## Notes
 

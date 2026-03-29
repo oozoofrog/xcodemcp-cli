@@ -6,6 +6,21 @@ The format is inspired by [Keep a Changelog](https://keepachangelog.com/en/1.1.0
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-03-29
+### Added
+- `doctor --json` now emits structured `recommendations` so automation can consume remediation guidance directly.
+- `agent status --json` now includes `warnings` and `nextSteps` for stale LaunchAgent registration and other stability issues.
+- `mcp config --strict-stable-path` to fail fast when the current executable path looks unstable for long-lived MCP registration.
+
+### Changed
+- `agent guide` and `agent demo` now surface relevant doctor recommendations inline in their human-readable environment sections.
+- `mcp config` now warns on unstable executable paths (for example `.build`, direct `Cellar`, temporary, or external-volume paths) and suggests a stable installed path when available.
+- `install.sh` now warns when the selected install directory looks unstable for long-lived MCP registration.
+
+### Fixed
+- `doctor`, `agent status`, `agent guide`, and `agent demo` now more consistently explain stale LaunchAgent registration caused by relative or mismatched binary paths.
+- `update` now refuses obviously unstable executable paths (Swift build outputs, temporary paths, external-volume paths) before attempting in-place replacement.
+
 ## [1.0.0] - 2026-03-21
 ### Changed
 - **Complete Go → Swift rewrite.** The entire CLI has been reimplemented as a Swift Package Manager project (swift-tools-version 6.0, macOS 15+). All Go source code is retained as reference but is no longer built or tested by CI.
