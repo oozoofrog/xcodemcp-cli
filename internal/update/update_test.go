@@ -43,6 +43,30 @@ func TestRunRejectsTemporaryGoBuildExecutable(t *testing.T) {
 	})
 }
 
+func TestRunRejectsSwiftBuildOutputPath(t *testing.T) {
+	withStubs(t, func() {
+		_, err := Run(context.Background(), Config{
+			CurrentVersion: "v0.5.2",
+			ExecutablePath: "/Users/test/xcodecli/.build/debug/xcodecli",
+		})
+		if err == nil || !strings.Contains(err.Error(), "Swift build output") {
+			t.Fatalf("expected Swift build output error, got %v", err)
+		}
+	})
+}
+
+func TestRunRejectsExternalVolumePath(t *testing.T) {
+	withStubs(t, func() {
+		_, err := Run(context.Background(), Config{
+			CurrentVersion: "v0.5.2",
+			ExecutablePath: "/Volumes/Work/xcodecli/xcodecli",
+		})
+		if err == nil || !strings.Contains(err.Error(), "external volume") {
+			t.Fatalf("expected external volume error, got %v", err)
+		}
+	})
+}
+
 func TestRunHomebrewUpdateReportsAlreadyUpToDate(t *testing.T) {
 	withStubs(t, func() {
 		prefix := "/opt/homebrew/Cellar/xcodecli/0.5.2"
@@ -208,7 +232,7 @@ func withStubs(t *testing.T, fn func()) {
 	defaultCommandRunner = func(ctx context.Context, command Command) (CommandResult, error) {
 		return CommandResult{}, fmt.Errorf("unexpected command: %+v", command)
 	}
-	defaultOSExecutableFunc = func() (string, error) { return "/tmp/xcodecli", nil }
+	defaultOSExecutableFunc = func() (string, error) { return "/usr/local/bin/xcodecli", nil }
 	defaultEvalSymlinksFunc = func(path string) (string, error) { return path, nil }
 	defaultTempDirFunc = func() string { return os.TempDir() }
 	defaultMkdirTempFunc = os.MkdirTemp

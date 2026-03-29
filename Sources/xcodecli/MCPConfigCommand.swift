@@ -38,6 +38,9 @@ struct MCPCommand: AsyncParsableCommand {
         @Flag(name: .long, help: "Print a machine-readable plan/result object")
         var json = false
 
+        @Flag(name: .customLong("strict-stable-path"), help: "Fail if the current xcodecli executable path looks unstable for long-lived MCP registration")
+        var strictStablePath = false
+
         @Option(name: .customLong("xcode-pid"), help: "Include an explicit MCP_XCODE_PID override")
         var xcodePID: String?
 
@@ -51,6 +54,15 @@ struct MCPCommand: AsyncParsableCommand {
                 scope: resolveScope(client: client, scope: scope),
                 xcodePID: xcodePID, sessionID: sessionID,
                 executablePath: executablePath
+            )
+
+            try validateMCPConfigExecutablePath(
+                executablePath: executablePath,
+                strictStablePath: strictStablePath,
+                advisory: MCPExecutableAdvisory(
+                    warnings: result.warnings,
+                    suggestedExecutablePath: result.suggestedExecutablePath
+                )
             )
 
             if write {
@@ -83,6 +95,7 @@ struct MCPCommand: AsyncParsableCommand {
         @Option(name: .long, help: "Server name") var name: String = "xcodecli"
         @Flag(name: .long, help: "Execute command") var write = false
         @Flag(name: .long, help: "JSON output") var json = false
+        @Flag(name: .customLong("strict-stable-path")) var strictStablePath = false
         @Option(name: .customLong("xcode-pid")) var xcodePID: String?
         @Option(name: .customLong("session-id")) var sessionID: String?
 
@@ -93,6 +106,7 @@ struct MCPCommand: AsyncParsableCommand {
             cmd.name = name
             cmd.write = write
             cmd.json = json
+            cmd.strictStablePath = strictStablePath
             cmd.xcodePID = xcodePID
             cmd.sessionID = sessionID
             try await cmd.run()
@@ -110,6 +124,7 @@ struct MCPCommand: AsyncParsableCommand {
         @Option(name: .long, help: "Scope") var scope: String?
         @Flag(name: .long, help: "Execute command") var write = false
         @Flag(name: .long, help: "JSON output") var json = false
+        @Flag(name: .customLong("strict-stable-path")) var strictStablePath = false
         @Option(name: .customLong("xcode-pid")) var xcodePID: String?
         @Option(name: .customLong("session-id")) var sessionID: String?
 
@@ -121,6 +136,7 @@ struct MCPCommand: AsyncParsableCommand {
             cmd.scope = scope
             cmd.write = write
             cmd.json = json
+            cmd.strictStablePath = strictStablePath
             cmd.xcodePID = xcodePID
             cmd.sessionID = sessionID
             try await cmd.run()
@@ -138,6 +154,7 @@ struct MCPCommand: AsyncParsableCommand {
         @Option(name: .long, help: "Scope") var scope: String?
         @Flag(name: .long, help: "Execute command") var write = false
         @Flag(name: .long, help: "JSON output") var json = false
+        @Flag(name: .customLong("strict-stable-path")) var strictStablePath = false
         @Option(name: .customLong("xcode-pid")) var xcodePID: String?
         @Option(name: .customLong("session-id")) var sessionID: String?
 
@@ -149,6 +166,7 @@ struct MCPCommand: AsyncParsableCommand {
             cmd.scope = scope
             cmd.write = write
             cmd.json = json
+            cmd.strictStablePath = strictStablePath
             cmd.xcodePID = xcodePID
             cmd.sessionID = sessionID
             try await cmd.run()
@@ -184,6 +202,8 @@ struct MCPConfigResult: Codable {
     let server: MCPConfigServerSpec
     let command: [String]
     let displayCommand: String
+    let warnings: [String]
+    let suggestedExecutablePath: String?
     var write: MCPConfigWriteResult
 }
 
@@ -246,6 +266,7 @@ private func buildMCPConfigResult(
     xcodePID: String?, sessionID: String?,
     executablePath: String
 ) throws -> MCPConfigResult {
+    let advisory = mcpConfigExecutableAdvisory(executablePath: executablePath)
     let serverArgs = mode == "bridge" ? ["bridge"] : ["serve"]
     let server = MCPConfigServerSpec(
         command: executablePath,
@@ -266,6 +287,8 @@ private func buildMCPConfigResult(
         server: server,
         command: command,
         displayCommand: shellQuoteCommand(command),
+        warnings: advisory.warnings,
+        suggestedExecutablePath: advisory.suggestedExecutablePath,
         write: MCPConfigWriteResult(requested: false, executed: false, exitCode: 0, stdout: "", stderr: "")
     )
 }
@@ -275,6 +298,28 @@ private func buildMCPConfigResult(
 private struct CommandInvocation {
     let name: String
     let args: [String]
+}
+
+private struct MCPExecutableAdvisory {
+    let warnings: [String]
+    let suggestedExecutablePath: String?
+}
+
+private func validateMCPConfigExecutablePath(
+    executablePath: String,
+    strictStablePath: Bool,
+    advisory: MCPExecutableAdvisory
+) throws {
+    guard strictStablePath, !advisory.warnings.isEmpty else { return }
+
+    var message = "current executable path looks unstable for long-lived MCP registration (\(executablePath))."
+    for warning in advisory.warnings {
+        message += "\n- \(warning)"
+    }
+    if let suggested = advisory.suggestedExecutablePath, !suggested.isEmpty {
+        message += "\nSuggested stable path: \(suggested)"
+    }
+    throw ValidationError(message)
 }
 
 private func buildMCPConfigInvocation(
@@ -484,6 +529,13 @@ private func formatMCPConfigResult(_ result: MCPConfigResult) -> String {
     }
     lines.append("command:")
     lines.append("  \(result.displayCommand)")
+    if !result.warnings.isEmpty {
+        lines.append("warnings:")
+        lines.append(contentsOf: result.warnings.map { "  - \($0)" })
+        if let suggested = result.suggestedExecutablePath, !suggested.isEmpty {
+            lines.append("suggested executable path: \(suggested)")
+        }
+    }
     lines.append("write requested: \(result.write.requested)")
     if result.write.requested {
         lines.append("write executed: \(result.write.executed)")
@@ -502,4 +554,71 @@ private func formatMCPConfigResult(_ result: MCPConfigResult) -> String {
         }
     }
     return lines.joined(separator: "\n")
+}
+
+private func mcpConfigExecutableAdvisory(executablePath: String) -> MCPExecutableAdvisory {
+    let standardized = (executablePath as NSString).standardizingPath
+    let lower = standardized.lowercased()
+    var warnings: [String] = []
+
+    if !(standardized as NSString).isAbsolutePath {
+        warnings.append("current executable path is relative; long-lived MCP registration is safer from an absolute installed path")
+    }
+    if lower.contains("/.build/") {
+        warnings.append("current executable path looks like a Swift build output; rebuilds or clean operations can invalidate LaunchAgent registration")
+    }
+    if lower.contains("/cellar/") {
+        warnings.append("current executable path points inside Homebrew Cellar; prefer the stable symlink path on PATH instead of a versioned Cellar path")
+    }
+    if lower.hasPrefix("/tmp/") || lower.hasPrefix("/private/tmp/") {
+        warnings.append("current executable path is in a temporary directory; temporary paths are poor targets for long-lived MCP registration")
+    }
+    if lower.hasPrefix("/volumes/") {
+        warnings.append("current executable path is on an external volume; for long-lived MCP usage prefer an internal stable install path")
+    }
+
+    let deduped = Array(NSOrderedSet(array: warnings)) as? [String] ?? warnings
+    return MCPExecutableAdvisory(
+        warnings: deduped,
+        suggestedExecutablePath: deduped.isEmpty ? nil : suggestedStableExecutablePath(currentPath: standardized)
+    )
+}
+
+private func suggestedStableExecutablePath(currentPath: String) -> String? {
+    let candidates = [
+        resolveExecutableOnPATH(named: "xcodecli"),
+        "/opt/homebrew/bin/xcodecli",
+        "/usr/local/bin/xcodecli",
+        "\(NSHomeDirectory())/.local/bin/xcodecli",
+    ]
+
+    for candidate in candidates.compactMap({ $0 }) {
+        let standardized = (candidate as NSString).standardizingPath
+        if standardized == currentPath { continue }
+        guard FileManager.default.isExecutableFile(atPath: standardized) else { continue }
+        guard isPreferredStableExecutablePath(standardized) else { continue }
+        return standardized
+    }
+    return nil
+}
+
+private func resolveExecutableOnPATH(named name: String) -> String? {
+    let pathDirs = (ProcessInfo.processInfo.environment["PATH"] ?? "").split(separator: ":").map(String.init)
+    for dir in pathDirs {
+        let full = (dir as NSString).appendingPathComponent(name)
+        if FileManager.default.isExecutableFile(atPath: full) {
+            return (full as NSString).standardizingPath
+        }
+    }
+    return nil
+}
+
+private func isPreferredStableExecutablePath(_ path: String) -> Bool {
+    let lower = path.lowercased()
+    if !(path as NSString).isAbsolutePath { return false }
+    if lower.contains("/.build/") { return false }
+    if lower.contains("/cellar/") { return false }
+    if lower.hasPrefix("/tmp/") || lower.hasPrefix("/private/tmp/") { return false }
+    if lower.hasPrefix("/volumes/") { return false }
+    return true
 }

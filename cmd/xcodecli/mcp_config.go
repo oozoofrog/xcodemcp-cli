@@ -38,14 +38,16 @@ type mcpConfigWriteResult struct {
 }
 
 type mcpConfigResult struct {
-	Client         string               `json:"client"`
-	Mode           string               `json:"mode"`
-	Name           string               `json:"name"`
-	Scope          string               `json:"scope,omitempty"`
-	Server         mcpConfigServerSpec  `json:"server"`
-	Command        []string             `json:"command"`
-	DisplayCommand string               `json:"displayCommand"`
-	Write          mcpConfigWriteResult `json:"write"`
+	Client                  string               `json:"client"`
+	Mode                    string               `json:"mode"`
+	Name                    string               `json:"name"`
+	Scope                   string               `json:"scope,omitempty"`
+	Server                  mcpConfigServerSpec  `json:"server"`
+	Command                 []string             `json:"command"`
+	DisplayCommand          string               `json:"displayCommand"`
+	Warnings                []string             `json:"warnings,omitempty"`
+	SuggestedExecutablePath string               `json:"suggestedExecutablePath,omitempty"`
+	Write                   mcpConfigWriteResult `json:"write"`
 }
 
 type mcpCommandRunner func(ctx context.Context, name string, args []string) (externalCommandResult, error)
@@ -53,6 +55,11 @@ type mcpCommandRunner func(ctx context.Context, name string, args []string) (ext
 type commandInvocation struct {
 	Name string
 	Args []string
+}
+
+type mcpExecutableAdvisory struct {
+	Warnings                []string
+	SuggestedExecutablePath string
 }
 
 var defaultExecutablePathFunc = resolveCurrentExecutablePath
@@ -86,6 +93,10 @@ func runMCPConfig(ctx context.Context, cfg cliConfig, stdout, stderr io.Writer) 
 		fmt.Fprintf(stderr, "xcodecli: %v\n", err)
 		return 1
 	}
+	if err := validateMCPConfigExecutablePath(cfg, executablePath, result); err != nil {
+		fmt.Fprintf(stderr, "xcodecli: %v\n", err)
+		return 1
+	}
 
 	exitCode := 0
 	if cfg.Write {
@@ -108,6 +119,7 @@ func runMCPConfig(ctx context.Context, cfg cliConfig, stdout, stderr io.Writer) 
 }
 
 func buildMCPConfigResult(cfg cliConfig, executablePath string) (mcpConfigResult, error) {
+	advisory := mcpConfigExecutableAdvisory(executablePath)
 	serverArgs := []string{"serve"}
 	if cfg.MCPMode == "bridge" {
 		serverArgs = []string{"bridge"}
@@ -125,17 +137,34 @@ func buildMCPConfigResult(cfg cliConfig, executablePath string) (mcpConfigResult
 
 	command := append([]string{invocation.Name}, invocation.Args...)
 	return mcpConfigResult{
-		Client:         cfg.MCPClient,
-		Mode:           cfg.MCPMode,
-		Name:           cfg.ConfigName,
-		Scope:          cfg.Scope,
-		Server:         server,
-		Command:        append([]string{}, command...),
-		DisplayCommand: shellQuoteCommand(command),
+		Client:                  cfg.MCPClient,
+		Mode:                    cfg.MCPMode,
+		Name:                    cfg.ConfigName,
+		Scope:                   cfg.Scope,
+		Server:                  server,
+		Command:                 append([]string{}, command...),
+		DisplayCommand:          shellQuoteCommand(command),
+		Warnings:                advisory.Warnings,
+		SuggestedExecutablePath: advisory.SuggestedExecutablePath,
 		Write: mcpConfigWriteResult{
 			Requested: cfg.Write,
 		},
 	}, nil
+}
+
+func validateMCPConfigExecutablePath(cfg cliConfig, executablePath string, result mcpConfigResult) error {
+	if !cfg.StrictStablePath || len(result.Warnings) == 0 {
+		return nil
+	}
+	var b strings.Builder
+	fmt.Fprintf(&b, "current executable path looks unstable for long-lived MCP registration (%s).", executablePath)
+	for _, warning := range result.Warnings {
+		fmt.Fprintf(&b, "\n- %s", warning)
+	}
+	if strings.TrimSpace(result.SuggestedExecutablePath) != "" {
+		fmt.Fprintf(&b, "\nSuggested stable path: %s", result.SuggestedExecutablePath)
+	}
+	return errors.New(b.String())
 }
 
 func buildMCPConfigInvocation(cfg cliConfig, server mcpConfigServerSpec) (commandInvocation, error) {
@@ -325,6 +354,15 @@ func formatMCPConfigResult(result mcpConfigResult) string {
 	}
 	fmt.Fprintln(&buf, "command:")
 	fmt.Fprintf(&buf, "  %s\n", result.DisplayCommand)
+	if len(result.Warnings) > 0 {
+		fmt.Fprintln(&buf, "warnings:")
+		for _, warning := range result.Warnings {
+			fmt.Fprintf(&buf, "  - %s\n", warning)
+		}
+		if strings.TrimSpace(result.SuggestedExecutablePath) != "" {
+			fmt.Fprintf(&buf, "suggested executable path: %s\n", result.SuggestedExecutablePath)
+		}
+	}
 	fmt.Fprintf(&buf, "write requested: %t\n", result.Write.Requested)
 	if result.Write.Requested {
 		fmt.Fprintf(&buf, "write executed: %t\n", result.Write.Executed)
@@ -442,6 +480,113 @@ func validateConfiguredExecutablePath(path string) (string, error) {
 		return "", fmt.Errorf("current executable path appears to be a temporary Go build output (%s); rerun `mcp config` using an installed or directly built xcodecli binary", path)
 	}
 	return path, nil
+}
+
+func mcpConfigExecutableAdvisory(executablePath string) mcpExecutableAdvisory {
+	standardized := filepath.Clean(executablePath)
+	lower := strings.ToLower(standardized)
+	warnings := []string{}
+
+	if !filepath.IsAbs(standardized) {
+		warnings = append(warnings, "current executable path is relative; long-lived MCP registration is safer from an absolute installed path")
+	}
+	if strings.Contains(lower, string(filepath.Separator)+".build"+string(filepath.Separator)) {
+		warnings = append(warnings, "current executable path looks like a Swift build output; rebuilds or clean operations can invalidate LaunchAgent registration")
+	}
+	if strings.Contains(lower, string(filepath.Separator)+"cellar"+string(filepath.Separator)) {
+		warnings = append(warnings, "current executable path points inside Homebrew Cellar; prefer the stable symlink path on PATH instead of a versioned Cellar path")
+	}
+	if strings.HasPrefix(lower, "/tmp/") || strings.HasPrefix(lower, "/private/tmp/") {
+		warnings = append(warnings, "current executable path is in a temporary directory; temporary paths are poor targets for long-lived MCP registration")
+	}
+	if strings.HasPrefix(lower, "/volumes/") {
+		warnings = append(warnings, "current executable path is on an external volume; for long-lived MCP usage prefer an internal stable install path")
+	}
+
+	deduped := dedupeStrings(warnings)
+	suggested := ""
+	if len(deduped) > 0 {
+		suggested = suggestedStableExecutablePath(standardized)
+	}
+	return mcpExecutableAdvisory{
+		Warnings:                deduped,
+		SuggestedExecutablePath: suggested,
+	}
+}
+
+func suggestedStableExecutablePath(currentPath string) string {
+	homeDir, _ := os.UserHomeDir()
+	candidates := []string{
+		resolveExecutableOnPATH("xcodecli"),
+		"/opt/homebrew/bin/xcodecli",
+		"/usr/local/bin/xcodecli",
+		filepath.Join(homeDir, ".local", "bin", "xcodecli"),
+	}
+	for _, candidate := range candidates {
+		if strings.TrimSpace(candidate) == "" {
+			continue
+		}
+		standardized := filepath.Clean(candidate)
+		if standardized == currentPath {
+			continue
+		}
+		if !isPreferredStableExecutablePath(standardized) {
+			continue
+		}
+		if info, err := os.Stat(standardized); err == nil && !info.IsDir() && info.Mode()&0o111 != 0 {
+			return standardized
+		}
+	}
+	return ""
+}
+
+func resolveExecutableOnPATH(name string) string {
+	for _, dir := range filepath.SplitList(os.Getenv("PATH")) {
+		if strings.TrimSpace(dir) == "" {
+			continue
+		}
+		full := filepath.Join(dir, name)
+		if info, err := os.Stat(full); err == nil && !info.IsDir() && info.Mode()&0o111 != 0 {
+			return filepath.Clean(full)
+		}
+	}
+	return ""
+}
+
+func isPreferredStableExecutablePath(path string) bool {
+	lower := strings.ToLower(path)
+	if !filepath.IsAbs(path) {
+		return false
+	}
+	if strings.Contains(lower, string(filepath.Separator)+".build"+string(filepath.Separator)) {
+		return false
+	}
+	if strings.Contains(lower, string(filepath.Separator)+"cellar"+string(filepath.Separator)) {
+		return false
+	}
+	if strings.HasPrefix(lower, "/tmp/") || strings.HasPrefix(lower, "/private/tmp/") {
+		return false
+	}
+	if strings.HasPrefix(lower, "/volumes/") {
+		return false
+	}
+	return true
+}
+
+func dedupeStrings(values []string) []string {
+	if len(values) == 0 {
+		return nil
+	}
+	seen := map[string]struct{}{}
+	out := make([]string, 0, len(values))
+	for _, value := range values {
+		if _, ok := seen[value]; ok {
+			continue
+		}
+		seen[value] = struct{}{}
+		out = append(out, value)
+	}
+	return out
 }
 
 func runExternalCommand(ctx context.Context, name string, args []string) (externalCommandResult, error) {

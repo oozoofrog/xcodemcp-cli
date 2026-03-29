@@ -132,6 +132,30 @@ struct UpdaterTests {
         }
     }
 
+    @Test("run rejects Swift build output executable path")
+    func runRejectsSwiftBuildOutputPath() async {
+        let runner = MockProcessRunner()
+        await #expect(throws: XcodeCLIError.self) {
+            _ = try await Updater.run(
+                currentVersion: "v0.5.2",
+                executablePath: "/Users/test/xcodecli/.build/debug/xcodecli",
+                processRunner: runner
+            )
+        }
+    }
+
+    @Test("run rejects external-volume executable path")
+    func runRejectsExternalVolumePath() async {
+        let runner = MockProcessRunner()
+        await #expect(throws: XcodeCLIError.self) {
+            _ = try await Updater.run(
+                currentVersion: "v0.5.2",
+                executablePath: "/Volumes/Work/xcodecli/xcodecli",
+                processRunner: runner
+            )
+        }
+    }
+
     @Test("run trims version whitespace before processing")
     func runTrimsVersion() async throws {
         // When homebrew is not found, falls back to direct update with git ls-remote.

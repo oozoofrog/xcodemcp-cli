@@ -79,6 +79,9 @@ func Run(ctx context.Context, cfg Config) (Result, error) {
 	if pathutil.IsTemporaryGoBuildExecutable(executablePath, defaultTempDirFunc) {
 		return Result{}, fmt.Errorf("current executable path appears to be a temporary Go build output (%s); rerun `xcodecli update` using an installed or directly built xcodecli binary", executablePath)
 	}
+	if err := validateStableExecutablePath(executablePath); err != nil {
+		return Result{}, err
+	}
 
 	resolvedExecutablePath := cleanResolvedPath(executablePath)
 	isHomebrew, prefix, err := detectHomebrewInstallation(ctx, resolvedExecutablePath)
@@ -97,6 +100,24 @@ func resolveExecutablePath() (string, error) {
 		return "", fmt.Errorf("resolve current executable: %w", err)
 	}
 	return cleanResolvedPath(path), nil
+}
+
+func validateStableExecutablePath(path string) error {
+	cleaned := cleanResolvedPath(path)
+	lower := strings.ToLower(cleaned)
+	if !filepath.IsAbs(cleaned) {
+		return fmt.Errorf("current executable path must be absolute for `xcodecli update` (%s); rerun update from an installed stable path", cleaned)
+	}
+	if strings.Contains(lower, string(filepath.Separator)+".build"+string(filepath.Separator)) {
+		return fmt.Errorf("current executable path looks like a Swift build output (%s); rerun `xcodecli update` from an installed stable path", cleaned)
+	}
+	if strings.HasPrefix(lower, "/tmp/") || strings.HasPrefix(lower, "/private/tmp/") {
+		return fmt.Errorf("current executable path is in a temporary directory (%s); rerun `xcodecli update` from an installed stable path", cleaned)
+	}
+	if strings.HasPrefix(lower, "/volumes/") {
+		return fmt.Errorf("current executable path is on an external volume (%s); rerun `xcodecli update` from an installed internal stable path", cleaned)
+	}
+	return nil
 }
 
 func detectHomebrewInstallation(ctx context.Context, executablePath string) (bool, string, error) {

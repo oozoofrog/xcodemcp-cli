@@ -93,7 +93,7 @@ func TestParseCLIHelpMCPConfig(t *testing.T) {
 	if err != errUsageRequested {
 		t.Fatalf("err = %v, want errUsageRequested", err)
 	}
-	for _, want := range []string{"mcp config", "--client <claude|codex|gemini>", "--mode <agent|bridge>", "--write"} {
+	for _, want := range []string{"mcp config", "--client <claude|codex|gemini>", "--mode <agent|bridge>", "--strict-stable-path", "--write"} {
 		if !strings.Contains(usage, want) {
 			t.Fatalf("usage missing %q: %s", want, usage)
 		}
@@ -167,6 +167,37 @@ func TestRunMCPConfigTextCodex(t *testing.T) {
 			t.Fatalf("stderr = %q, want empty stderr", stderr.String())
 		}
 	})
+}
+
+func TestRunMCPConfigStrictStablePathFailsForDebugBuild(t *testing.T) {
+	withStubs(t, func() {
+		var stdout strings.Builder
+		var stderr strings.Builder
+		code := run(context.Background(), []string{
+			"mcp", "config",
+			"--client", "codex",
+			"--strict-stable-path",
+		}, strings.NewReader(""), &stdout, &stderr, os.Environ())
+		if code == 0 {
+			t.Fatalf("exit code = %d, want non-zero", code)
+		}
+		if !strings.Contains(stderr.String(), "unstable") {
+			t.Fatalf("stderr = %q, want unstable path failure", stderr.String())
+		}
+	})
+}
+
+func TestMCPConfigExecutableAdvisoryWarnsForRelativeAndDebugLikePaths(t *testing.T) {
+	advisory := mcpConfigExecutableAdvisory("/Volumes/work/xcodecli/.build/debug/xcodecli")
+	if len(advisory.Warnings) == 0 {
+		t.Fatal("expected warnings for debug build on external volume")
+	}
+	joined := strings.Join(advisory.Warnings, "\n")
+	for _, want := range []string{"Swift build output", "external volume"} {
+		if !strings.Contains(joined, want) {
+			t.Fatalf("warnings missing %q: %s", want, joined)
+		}
+	}
 }
 
 func TestRunMCPAliasTextCodex(t *testing.T) {

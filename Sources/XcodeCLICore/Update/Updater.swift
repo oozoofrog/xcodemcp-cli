@@ -17,10 +17,18 @@ public struct UpdateResult: Sendable {
 public enum Updater {
     private static let homebrewFormula = "oozoofrog/tap/xcodecli"
 
-    public static func run(currentVersion: String, processRunner: some ProcessRunning) async throws -> UpdateResult {
+    public static func run(
+        currentVersion: String,
+        executablePath: String? = nil,
+        processRunner: some ProcessRunning
+    ) async throws -> UpdateResult {
         let version = currentVersion.trimmingCharacters(in: .whitespaces)
         guard !version.isEmpty else {
             throw XcodeCLIError.mcpInitializationFailed(reason: "current version must not be empty")
+        }
+
+        if let executablePath, !executablePath.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            try validateStableUpdateExecutablePath(executablePath)
         }
 
         // Try Homebrew first
@@ -131,5 +139,31 @@ public enum Updater {
         }
 
         return versions[0].tag
+    }
+
+    private static func validateStableUpdateExecutablePath(_ rawPath: String) throws {
+        let path = (rawPath as NSString).standardizingPath
+        let lower = path.lowercased()
+
+        if !(path as NSString).isAbsolutePath {
+            throw XcodeCLIError.mcpInitializationFailed(
+                reason: "current executable path must be absolute for `xcodecli update` (\(path)); rerun update from an installed stable path"
+            )
+        }
+        if lower.contains("/.build/") {
+            throw XcodeCLIError.mcpInitializationFailed(
+                reason: "current executable path looks like a Swift build output (\(path)); rerun `xcodecli update` from an installed stable path"
+            )
+        }
+        if lower.hasPrefix("/tmp/") || lower.hasPrefix("/private/tmp/") {
+            throw XcodeCLIError.mcpInitializationFailed(
+                reason: "current executable path is in a temporary directory (\(path)); rerun `xcodecli update` from an installed stable path"
+            )
+        }
+        if lower.hasPrefix("/volumes/") {
+            throw XcodeCLIError.mcpInitializationFailed(
+                reason: "current executable path is on an external volume (\(path)); rerun `xcodecli update` from an installed internal stable path"
+            )
+        }
     }
 }

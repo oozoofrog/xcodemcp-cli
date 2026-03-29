@@ -72,6 +72,18 @@ warn_if_not_on_path() {
   esac
 }
 
+warn_if_unstable_install_dir() {
+  local dir="$1"
+  case "$dir" in
+    /tmp/*|/private/tmp/*)
+      log "warning: ${dir} is a temporary directory; prefer a stable install path like \$HOME/.local/bin for long-lived MCP registration"
+      ;;
+    /Volumes/*)
+      log "warning: ${dir} is on an external volume; prefer an internal stable install path like \$HOME/.local/bin or /opt/homebrew/bin for long-lived MCP registration"
+      ;;
+  esac
+}
+
 resolve_path() {
   local path="$1"
   [[ -n "$path" ]] || return 1
@@ -277,6 +289,7 @@ else
 fi
 
 INSTALL_BIN_DIR="$(mkdir -p "$BIN_DIR" && cd "$BIN_DIR" >/dev/null 2>&1 && pwd)"
+warn_if_unstable_install_dir "$INSTALL_BIN_DIR"
 TEMP_OUTPUT="${WORK_DIR:-${TMPDIR:-/tmp}}/xcodecli"
 rm -f "$TEMP_OUTPUT"
 log "building xcodecli"
@@ -297,4 +310,5 @@ if version_output="$("${INSTALL_PATH}" version 2>/dev/null)"; then
 fi
 
 log "installed ${INSTALL_PATH}"
+log "for long-lived MCP registration, prefer running \`${INSTALL_PATH} mcp codex\` (or the equivalent client alias) from this installed path"
 report_path_status "$INSTALL_BIN_DIR" "$INSTALL_PATH"

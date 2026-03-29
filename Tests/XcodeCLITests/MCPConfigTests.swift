@@ -12,6 +12,8 @@ private struct MCPConfigOutput: Decodable {
     let server: ServerSpec
     let command: [String]
     let displayCommand: String
+    let warnings: [String]?
+    let suggestedExecutablePath: String?
     let write: WriteResult
 
     struct ServerSpec: Decodable {
@@ -42,6 +44,7 @@ struct MCPConfigTests {
         #expect(output.client == "codex")
         #expect(output.mode == "agent")
         #expect(output.name == "xcodecli")
+        #expect((output.warnings ?? []).contains { $0.contains("Swift build output") || $0.contains("external volume") })
     }
 
     @Test("mcp config --client claude --json produces valid JSON")
@@ -167,6 +170,22 @@ struct MCPConfigTests {
         let result = try await runCLI(["mcp", "config", "--client", "codex", "--json"])
         let output = try decodeMCPConfig(result.stdout)
         #expect(output.server.env.isEmpty)
+    }
+
+    @Test("config from debug build emits stable-path warnings")
+    func unstableExecutableWarnings() async throws {
+        let result = try await runCLI(["mcp", "config", "--client", "codex", "--json"])
+        let output = try decodeMCPConfig(result.stdout)
+        let warnings = output.warnings ?? []
+        #expect(!warnings.isEmpty)
+        #expect(warnings.contains { $0.contains("Swift build output") || $0.contains("external volume") })
+    }
+
+    @Test("strict stable path fails from debug build")
+    func strictStablePathFails() async throws {
+        let result = try await runCLI(["mcp", "config", "--client", "codex", "--strict-stable-path", "--json"])
+        #expect(result.exitCode != 0)
+        #expect(result.stderr.contains("unstable"))
     }
 
     // MARK: - Error Cases
