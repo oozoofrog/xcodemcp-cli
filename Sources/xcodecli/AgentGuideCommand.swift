@@ -1203,6 +1203,18 @@ private func formatGuideEnvironmentSection(_ report: AgentGuideReport, _ windowM
     var lines = ["Environment", "-----------"]
     let summary = report.environment.doctor.summary
     lines.append("doctor: \(report.environment.doctor.success) (\(summary.ok) ok, \(summary.warn) warn, \(summary.fail) fail, \(summary.info) info)")
+    let notableChecks = report.environment.doctor.checks.filter { $0.status == .warn || $0.status == .fail }
+    if !notableChecks.isEmpty {
+        lines.append("notable checks:")
+        lines.append(contentsOf: notableChecks.map { "- \($0.name) [\($0.status.rawValue)]: \($0.detail)" })
+    }
+    if !report.environment.doctor.recommendations.isEmpty {
+        lines.append("recommendations:")
+        for recommendation in report.environment.doctor.recommendations {
+            lines.append("- \(recommendation.message)")
+            lines.append(contentsOf: recommendation.commands.map { "  \($0)" })
+        }
+    }
     lines.append("tool catalog: \(report.environment.toolCatalog.count) tools")
     if let status = report.environment.agentStatus {
         lines.append("launchagent: running=\(status.running) socketReachable=\(status.socketReachable) backendSessions=\(status.backendSessions)")

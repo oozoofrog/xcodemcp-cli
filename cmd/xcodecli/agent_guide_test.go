@@ -135,6 +135,31 @@ func TestRunAgentGuideNoIntentShowsCatalog(t *testing.T) {
 	})
 }
 
+func TestFormatAgentGuideIncludesRecommendations(t *testing.T) {
+	report := agentGuideReport{
+		Intent: guideIntentResult{Raw: "build Unicody", WorkflowID: "build", Confidence: 0.75},
+		Environment: guideEnvironment{
+			Doctor: doctor.Report{Checks: []doctor.Check{
+				{Name: "running Xcode processes", Status: doctor.StatusWarn, Detail: "no Xcode.app process detected"},
+			}}.JSON(),
+			ToolCatalog: demoToolCatalog{},
+		},
+		Workflow: guideWorkflowResult{
+			ID:     "build",
+			Title:  "Build a project",
+			Reason: "The request is about building.",
+			Steps:  []guideWorkflowStep{{ToolName: "XcodeListWindows", Why: "Find the right window."}},
+		},
+	}
+
+	text := formatAgentGuide(report, guideWindowMatch{})
+	for _, want := range []string{"recommendations:", "Open Xcode with the target workspace visible"} {
+		if !strings.Contains(text, want) {
+			t.Fatalf("guide output missing %q: %s", want, text)
+		}
+	}
+}
+
 func TestRunAgentGuideBuildJSONUsesMatchedWindow(t *testing.T) {
 	withStubs(t, func() {
 		stubGuideEnvironment(t)

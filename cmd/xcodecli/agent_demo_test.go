@@ -66,7 +66,7 @@ func TestAgentUsageIncludesDemo(t *testing.T) {
 func TestRunAgentDemoText(t *testing.T) {
 	withStubs(t, func() {
 		defaultDoctorRunFunc = func(ctx context.Context, opts doctor.Options) doctor.Report {
-			return doctor.Report{Checks: []doctor.Check{{Name: "xcrun lookup", Status: doctor.StatusOK, Detail: "/usr/bin/xcrun"}}}
+			return doctor.Report{Checks: []doctor.Check{{Name: "running Xcode processes", Status: doctor.StatusWarn, Detail: "no Xcode.app process detected"}}}
 		}
 
 		agentStatusCalls := 0
@@ -101,6 +101,8 @@ func TestRunAgentDemoText(t *testing.T) {
 		text := stdout.String()
 		for _, want := range []string{
 			"Environment",
+			"recommendations:",
+			"Open Xcode with the target workspace visible",
 			"Tool Catalog",
 			"Safe Live Demo",
 			"Next Commands",
@@ -116,6 +118,23 @@ func TestRunAgentDemoText(t *testing.T) {
 			}
 		}
 	})
+}
+
+func TestFormatAgentDemoIncludesRecommendations(t *testing.T) {
+	report := agentDemoReport{
+		Doctor: doctor.Report{Checks: []doctor.Check{
+			{Name: "running Xcode processes", Status: doctor.StatusWarn, Detail: "no Xcode.app process detected"},
+		}}.JSON(),
+		ToolCatalog: demoToolCatalog{},
+		WindowsDemo: demoWindowsResult{ToolName: demoWindowsToolName},
+	}
+
+	text := formatAgentDemo(report)
+	for _, want := range []string{"recommendations:", "Open Xcode with the target workspace visible"} {
+		if !strings.Contains(text, want) {
+			t.Fatalf("demo output missing %q: %s", want, text)
+		}
+	}
 }
 
 func TestRunAgentDemoJSON(t *testing.T) {

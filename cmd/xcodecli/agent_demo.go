@@ -255,6 +255,15 @@ func formatAgentDemo(report agentDemoReport) string {
 			fmt.Fprintf(&b, "- %s [%s]: %s\n", check.Name, check.Status, check.Detail)
 		}
 	}
+	if len(report.Doctor.Recommendations) > 0 {
+		b.WriteString("recommendations:\n")
+		for _, recommendation := range report.Doctor.Recommendations {
+			fmt.Fprintf(&b, "- %s\n", recommendation.Message)
+			for _, command := range recommendation.Commands {
+				fmt.Fprintf(&b, "  %s\n", command)
+			}
+		}
+	}
 	if report.AgentStatus != nil {
 		fmt.Fprintf(&b, "launchagent after tools discovery: running=%t socketReachable=%t backendSessions=%d\n", report.AgentStatus.Running, report.AgentStatus.SocketReachable, report.AgentStatus.BackendSessions)
 	} else {

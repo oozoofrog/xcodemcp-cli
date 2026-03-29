@@ -302,6 +302,10 @@ struct AgentGuideWorkflowTests {
 
         #expect(output.contains("Intent"))
         #expect(output.contains("Environment"))
+        #expect(output.contains("notable checks:"))
+        #expect(output.contains("running Xcode processes [warn]"))
+        #expect(output.contains("recommendations:"))
+        #expect(output.contains("Open Xcode with the target workspace visible"))
         #expect(output.contains("window match: Matched tab-1"))
         #expect(output.contains("Exact Next Commands"))
         #expect(output.contains("Fallbacks"))

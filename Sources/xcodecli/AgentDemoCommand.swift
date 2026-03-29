@@ -167,6 +167,15 @@ private func formatAgentDemo(_ report: AgentDemoReport) -> String {
             b += "- \(check.name) [\(check.status.rawValue)]: \(check.detail)\n"
         }
     }
+    if !report.doctor.recommendations.isEmpty {
+        b += "recommendations:\n"
+        for recommendation in report.doctor.recommendations {
+            b += "- \(recommendation.message)\n"
+            for command in recommendation.commands {
+                b += "  \(command)\n"
+            }
+        }
+    }
 
     if let status = report.agentStatus {
         b += "launchagent after tools discovery: running=\(status.running) socketReachable=\(status.socketReachable) backendSessions=\(status.backendSessions)\n"

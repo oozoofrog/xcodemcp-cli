@@ -136,10 +136,14 @@ Notes:
 - `mcp config` targets `xcodecli serve` by default so MCP clients reuse the LaunchAgent-backed pooled runtime.
 - Use `--mode bridge` if you explicitly want raw `xcodecli bridge` passthrough instead.
 - `xcodecli mcp codex|claude|gemini` are shorthand aliases for `xcodecli mcp config --client ...`.
+- `mcp config` warns when the current `xcodecli` executable path looks unstable for long-lived MCP registration (for example `.build`, `Cellar`, `/tmp`, or external-volume paths).
+- Add `--strict-stable-path` if you want `mcp config` to fail instead of warn when the current executable path looks unstable.
 - Output-only mode prints a ready-to-paste registration command and does **not** create or reuse `xcodecli`'s persistent session file.
 - The first actual `serve` run creates or reuses `xcodecli`'s persistent session ID at runtime if you did not pass `--session-id`.
 - `--write` delegates registration to the target client CLI instead of editing that client's config files directly.
 - Gemini defaults to `--scope user` so it does not write `.gemini/settings.json` into the current project unless you explicitly choose `--scope project`.
+- For long-lived MCP usage, register a **stable xcodecli path** (for example `/opt/homebrew/bin/xcodecli` or `~/.local/bin/xcodecli`). Switching between different binaries or checkout paths forces the LaunchAgent to recycle its backend session, which can surface fresh Xcode authorization prompts.
+- Avoid changing `MCP_XCODE_PID` or `DEVELOPER_DIR` between runs unless you intentionally want a separate pooled session.
 
 List tools through the MCP bridge:
 
@@ -239,5 +243,10 @@ The project now uses stable semantic versioning tags with the following release 
 - `--timeout` is the **request timeout**. It includes first-use LaunchAgent startup, `mcpbridge` session initialization, and any auth prompts.
 - The default **mcpbridge session idle timeout** is `24h`. It controls how long pooled `mcpbridge` sessions stay alive while idle.
 - Active requests are **not** interrupted by the `mcpbridge session idle timeout`.
+- `doctor`, `agent demo`, and `agent guide` will warn when the registered LaunchAgent binary path is relative, missing, or differs from the current binary because those drifts are common causes of LaunchAgent bootstrap failures and unexpected re-authorization churn.
+- `agent status` surfaces the same stale-registration warnings in human-readable mode so you can triage LaunchAgent drift without running the full doctor flow first.
+- `doctor --json` now includes structured `recommendations` alongside raw checks so automation can act on common remediation paths directly.
+- `agent guide` and `agent demo` now echo relevant doctor recommendations in their human-readable environment sections so first-run triage does not require a separate doctor pass.
+- `update` now refuses obviously unstable executable paths (for example Swift build outputs, temporary directories, and external-volume paths) so in-place upgrades only happen from stable install locations.
 - Default request timeouts are `60s` for `tools list`, `tool inspect`, `agent guide`, and `agent demo`; `tool call` uses tool-specific defaults (`60s` list/read/search/log, `120s` update/write/refresh, `30m` build/test, `5m` fallback).
 - `tool call` accepts exactly one payload source: inline `--json`, `--json @file`, or `--json-stdin`.

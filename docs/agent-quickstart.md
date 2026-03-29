@@ -55,6 +55,14 @@ Look for:
 - `success: true` from `doctor`
 - a running Xcode PID or at least an open Xcode process
 - LaunchAgent socket reachability after the first tools command
+- any warnings about `LaunchAgent binary registration`, `effective MCP_XCODE_PID`, or `effective DEVELOPER_DIR`
+
+To minimize repeated Xcode authorization prompts across sessions:
+- prefer `xcodecli serve` / `mcp config` default agent mode
+- keep using the **same installed xcodecli path** instead of alternating between a checkout binary and a Homebrew or copied binary
+- avoid changing `MCP_XCODE_PID` or `DEVELOPER_DIR` unless you intentionally want a different pooled session
+- if `mcp config` warns that the current executable path looks unstable, re-run it from a stable installed path before registering the server with your MCP client
+- if you want policy enforcement instead of advisory output, add `--strict-stable-path` to `mcp config`
 
 ## 5. Discover available tools
 
@@ -133,6 +141,12 @@ If you want the next mutating step after discovery, that is where you would choo
 ```
 
 Then retry `tools list` or `tool inspect`.
+
+If `doctor` reports that the registered LaunchAgent binary path is relative, missing, or mismatched, treat that as a stale registration. Re-run the current binary once after `agent uninstall`, then keep using that same binary path for future MCP registration.
+`agent status` now surfaces the same stale-registration hints in text mode, so use it as the fastest first triage command before escalating to `doctor`.
+Likewise, run `xcodecli update` only from a stable installed path. The command now rejects obvious Swift build outputs, temporary paths, and external-volume paths instead of trying to replace them in place.
+For automation, prefer `doctor --json`: it now includes a structured `recommendations` array in addition to raw checks.
+For interactive use, `agent guide` and `agent demo` now surface those recommendations inline when the environment already suggests a likely next fix.
 
 ### The payload is large or reused often
 Prefer `--json @file` over a huge inline string.

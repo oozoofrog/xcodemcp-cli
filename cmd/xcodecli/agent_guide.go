@@ -980,6 +980,27 @@ func formatAgentGuide(report agentGuideReport, windowMatch guideWindowMatch) str
 	b.WriteString("-----------\n")
 	summary := report.Environment.Doctor.Summary
 	fmt.Fprintf(&b, "doctor: %t (%d ok, %d warn, %d fail, %d info)\n", report.Environment.Doctor.Success, summary.OK, summary.Warn, summary.Fail, summary.Info)
+	notableChecks := make([]doctor.Check, 0, len(report.Environment.Doctor.Checks))
+	for _, check := range report.Environment.Doctor.Checks {
+		if check.Status == doctor.StatusWarn || check.Status == doctor.StatusFail {
+			notableChecks = append(notableChecks, check)
+		}
+	}
+	if len(notableChecks) > 0 {
+		b.WriteString("notable checks:\n")
+		for _, check := range notableChecks {
+			fmt.Fprintf(&b, "- %s [%s]: %s\n", check.Name, check.Status, check.Detail)
+		}
+	}
+	if len(report.Environment.Doctor.Recommendations) > 0 {
+		b.WriteString("recommendations:\n")
+		for _, recommendation := range report.Environment.Doctor.Recommendations {
+			fmt.Fprintf(&b, "- %s\n", recommendation.Message)
+			for _, command := range recommendation.Commands {
+				fmt.Fprintf(&b, "  %s\n", command)
+			}
+		}
+	}
 	fmt.Fprintf(&b, "tool catalog: %d tools\n", report.Environment.ToolCatalog.Count)
 	if report.Environment.AgentStatus != nil {
 		fmt.Fprintf(&b, "launchagent: running=%t socketReachable=%t backendSessions=%d\n", report.Environment.AgentStatus.Running, report.Environment.AgentStatus.SocketReachable, report.Environment.AgentStatus.BackendSessions)
