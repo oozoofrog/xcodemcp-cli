@@ -8,6 +8,7 @@ import (
 	"io"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"runtime"
 	"strings"
 	"syscall"
@@ -393,7 +394,8 @@ func formatAgentStatus(status agent.Status) string {
 	if status.SocketReachable {
 		socketText = "yes"
 	}
-	return fmt.Sprintf("xcodecli agent\n\nlabel: %s\nplist installed: %t\nplist path: %s\nregistered binary: %s\ncurrent binary: %s\nbinary matches: %s\nsocket path: %s\nsocket reachable: %s\nrunning: %s\npid: %d\nmcpbridge session idle timeout: %s\nbackend sessions: %d\n",
+	var buf strings.Builder
+	fmt.Fprintf(&buf, "xcodecli agent\n\nlabel: %s\nplist installed: %t\nplist path: %s\nregistered binary: %s\ncurrent binary: %s\nbinary matches: %s\nsocket path: %s\nsocket reachable: %s\nrunning: %s\npid: %d\nmcpbridge session idle timeout: %s\nbackend sessions: %d\n",
 		status.Label,
 		status.PlistInstalled,
 		status.PlistPath,
@@ -407,6 +409,54 @@ func formatAgentStatus(status agent.Status) string {
 		formatTimeoutDuration(status.IdleTimeout),
 		status.BackendSessions,
 	)
+	warnings := status.Warnings
+	if len(warnings) == 0 {
+		warnings = agentStatusWarnings(status)
+	}
+	if len(warnings) > 0 {
+		fmt.Fprintln(&buf, "warnings:")
+		for _, warning := range warnings {
+			fmt.Fprintf(&buf, "- %s\n", warning)
+		}
+	}
+	nextSteps := status.NextSteps
+	if len(nextSteps) == 0 {
+		nextSteps = agentStatusNextSteps(status, warnings)
+	}
+	if len(nextSteps) > 0 {
+		fmt.Fprintln(&buf, "next steps:")
+		for _, step := range nextSteps {
+			fmt.Fprintf(&buf, "- %s\n", step)
+		}
+	}
+	return buf.String()
+}
+
+func agentStatusWarnings(status agent.Status) []string {
+	warnings := []string{}
+	if strings.TrimSpace(status.RegisteredBinary) != "" && !filepath.IsAbs(status.RegisteredBinary) {
+		warnings = append(warnings, "registered LaunchAgent binary path is relative; stale older installs can make launchctl bootstrap fail with Input/output error")
+	}
+	if strings.TrimSpace(status.RegisteredBinary) != "" {
+		if info, err := os.Stat(status.RegisteredBinary); err != nil || info.IsDir() || info.Mode()&0o111 == 0 {
+			warnings = append(warnings, "registered LaunchAgent binary is missing or not executable; the next LaunchAgent bootstrap may fail until the plist is rewritten")
+		}
+	}
+	if strings.TrimSpace(status.RegisteredBinary) != "" && strings.TrimSpace(status.CurrentBinary) != "" && !status.BinaryPathMatches {
+		warnings = append(warnings, "registered LaunchAgent binary differs from the current binary; switching binaries recycles the backend session and can surface fresh Xcode authorization prompts")
+	}
+	return dedupeStrings(warnings)
+}
+
+func agentStatusNextSteps(status agent.Status, warnings []string) []string {
+	steps := []string{}
+	if len(warnings) > 0 {
+		steps = append(steps, "if the registration looks stale, run `xcodecli agent uninstall` and then re-register from one stable xcodecli path")
+	}
+	if status.PlistInstalled && !status.Running && !status.SocketReachable {
+		steps = append(steps, "run `xcodecli agent demo` or `xcodecli tools list --json` to bootstrap the LaunchAgent again")
+	}
+	return steps
 }
 
 func parseJSONObject(raw string) (map[string]any, error) {

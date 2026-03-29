@@ -898,6 +898,30 @@ func TestRunAgentStatusText(t *testing.T) {
 	})
 }
 
+func TestFormatAgentStatusIncludesWarningsForRelativeBinary(t *testing.T) {
+	status := agent.Status{
+		Label:             agent.LaunchAgentLabel,
+		PlistInstalled:    true,
+		PlistPath:         "/tmp/io.oozoofrog.xcodecli.plist",
+		RegisteredBinary:  "../Cellar/xcodecli/1.0.1/bin/xcodecli",
+		CurrentBinary:     "/opt/homebrew/bin/xcodecli",
+		BinaryPathMatches: false,
+		SocketPath:        "/tmp/daemon.sock",
+		SocketReachable:   false,
+		Running:           false,
+		PID:               0,
+		IdleTimeout:       24 * time.Hour,
+		BackendSessions:   0,
+	}
+
+	text := formatAgentStatus(status)
+	for _, want := range []string{"warnings:", "relative", "next steps:", "agent uninstall"} {
+		if !strings.Contains(text, want) {
+			t.Fatalf("status output missing %q: %s", want, text)
+		}
+	}
+}
+
 func TestRunAgentStatusJSON(t *testing.T) {
 	withStubs(t, func() {
 		defaultAgentStatusFunc = func(ctx context.Context, cfg agent.Config) (agent.Status, error) {

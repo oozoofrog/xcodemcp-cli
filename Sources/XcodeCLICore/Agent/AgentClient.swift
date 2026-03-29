@@ -68,6 +68,9 @@ public enum AgentClient {
             }
         }
 
+        agentStatus.warnings = deriveAgentStatusWarnings(agentStatus)
+        agentStatus.nextSteps = deriveAgentStatusNextSteps(agentStatus, warnings: agentStatus.warnings)
+
         return agentStatus
     }
 

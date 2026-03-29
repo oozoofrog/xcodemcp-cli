@@ -111,6 +111,8 @@ func StatusInfo(ctx context.Context, cfg Config) (Status, error) {
 		status.IdleTimeout = time.Duration(resp.Status.IdleTimeoutMS) * time.Millisecond
 		status.BackendSessions = resp.Status.BackendSessions
 	}
+	status.Warnings = deriveStatusWarnings(status)
+	status.NextSteps = deriveStatusNextSteps(status, status.Warnings)
 	return status, nil
 }
 

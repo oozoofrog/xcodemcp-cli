@@ -28,10 +28,23 @@ public struct DoctorSummary: Codable, Sendable {
     public let info: Int
 }
 
+public struct DoctorRecommendation: Codable, Sendable {
+    public let id: String
+    public let message: String
+    public let commands: [String]
+
+    public init(id: String, message: String, commands: [String] = []) {
+        self.id = id
+        self.message = message
+        self.commands = commands
+    }
+}
+
 public struct DoctorJSONReport: Codable, Sendable {
     public let success: Bool
     public let summary: DoctorSummary
     public let checks: [DoctorCheck]
+    public let recommendations: [DoctorRecommendation]
 }
 
 public struct DoctorReport: Sendable {
@@ -59,7 +72,7 @@ public struct DoctorReport: Sendable {
     }
 
     public var jsonReport: DoctorJSONReport {
-        DoctorJSONReport(success: isSuccess, summary: summary, checks: checks)
+        DoctorJSONReport(success: isSuccess, summary: summary, checks: checks, recommendations: recommendations)
     }
 
     public var textReport: String {
@@ -68,9 +81,61 @@ public struct DoctorReport: Sendable {
         for check in checks {
             lines.append("\(statusIcon(check.status)) \(check.name): \(check.detail)")
         }
+        if !recommendations.isEmpty {
+            lines.append("")
+            lines.append("Recommendations:")
+            for recommendation in recommendations {
+                lines.append("- \(recommendation.message)")
+                lines.append(contentsOf: recommendation.commands.map { "  \($0)" })
+            }
+        }
         lines.append("")
         lines.append("Summary: \(s.ok) ok, \(s.warn) warn, \(s.fail) fail, \(s.info) info")
         return lines.joined(separator: "\n") + "\n"
+    }
+
+    public var recommendations: [DoctorRecommendation] {
+        var recommendations: [DoctorRecommendation] = []
+
+        if let check = checks.first(where: { $0.name == "LaunchAgent binary registration" && $0.status == .warn }) {
+            recommendations.append(DoctorRecommendation(
+                id: "launchagent-registration",
+                message: "LaunchAgent registration looks stale or unstable. Re-register xcodecli from one stable installed path.",
+                commands: [
+                    "xcodecli agent uninstall",
+                    "xcodecli mcp codex",
+                ]
+            ))
+            if check.detail.contains("relative") {
+                recommendations.append(DoctorRecommendation(
+                    id: "launchagent-relative-path",
+                    message: "Avoid relative or versioned binary paths in LaunchAgent ProgramArguments; prefer an absolute stable path such as /opt/homebrew/bin/xcodecli."
+                ))
+            }
+        }
+
+        if checks.contains(where: { $0.name == "effective MCP_XCODE_PID" && $0.status == .warn }) {
+            recommendations.append(DoctorRecommendation(
+                id: "session-key-xcode-pid",
+                message: "Drop explicit MCP_XCODE_PID unless you intentionally want a separate pooled session."
+            ))
+        }
+
+        if checks.contains(where: { $0.name == "effective DEVELOPER_DIR" && $0.status == .warn }) {
+            recommendations.append(DoctorRecommendation(
+                id: "session-key-developer-dir",
+                message: "Keep DEVELOPER_DIR aligned with xcode-select -p across runs unless you intentionally need a separate pooled session."
+            ))
+        }
+
+        if checks.contains(where: { $0.name == "running Xcode processes" && $0.status == .warn }) {
+            recommendations.append(DoctorRecommendation(
+                id: "xcode-not-running",
+                message: "Open Xcode with the target workspace visible before using bridge-backed commands."
+            ))
+        }
+
+        return recommendations
     }
 
     private func statusIcon(_ status: CheckStatus) -> String {
@@ -116,13 +181,16 @@ public struct AgentStatus: Codable, Sendable {
     public var pid: Int
     public var idleTimeoutNs: Int64 // nanoseconds (Go time.Duration compatible)
     public var backendSessions: Int
+    public var warnings: [String]
+    public var nextSteps: [String]
 
     public init(
         label: String = "", plistPath: String = "", plistInstalled: Bool = false,
         registeredBinary: String = "", currentBinary: String = "",
         binaryPathMatches: Bool = false, socketPath: String = "",
         socketReachable: Bool = false, running: Bool = false, pid: Int = 0,
-        idleTimeoutNs: Int64 = 0, backendSessions: Int = 0
+        idleTimeoutNs: Int64 = 0, backendSessions: Int = 0,
+        warnings: [String] = [], nextSteps: [String] = []
     ) {
         self.label = label
         self.plistPath = plistPath
@@ -136,6 +204,8 @@ public struct AgentStatus: Codable, Sendable {
         self.pid = pid
         self.idleTimeoutNs = idleTimeoutNs
         self.backendSessions = backendSessions
+        self.warnings = warnings
+        self.nextSteps = nextSteps
     }
 }
 
@@ -209,6 +279,7 @@ public struct DoctorInspector: Sendable {
 
     public func run(opts: DoctorOptions) async -> DoctorReport {
         var checks: [DoctorCheck] = []
+        var xcodeSelectPath = ""
 
         // 1. xcrun lookup
         let xcrunPath = await lookPath("xcrun")
@@ -250,9 +321,10 @@ public struct DoctorInspector: Sendable {
         do {
             let result = try await processRunner.run("/usr/bin/xcode-select", arguments: ["-p"])
             if result.exitCode == 0 {
+                xcodeSelectPath = result.stdout.trimmingCharacters(in: .whitespacesAndNewlines)
                 checks.append(DoctorCheck(
                     name: "xcode-select -p", status: .ok,
-                    detail: result.stdout.trimmingCharacters(in: .whitespacesAndNewlines)
+                    detail: xcodeSelectPath
                 ))
             } else {
                 checks.append(DoctorCheck(
@@ -311,8 +383,8 @@ public struct DoctorInspector: Sendable {
                 } else if let proc = allProcesses.first(where: { $0.pid == pid }) {
                     if proc.looksLikeXcode {
                         checks.append(DoctorCheck(
-                            name: "effective MCP_XCODE_PID", status: .ok,
-                            detail: "PID \(pid) -> \(proc.command)"
+                            name: "effective MCP_XCODE_PID", status: .warn,
+                            detail: "PID \(pid) -> \(proc.command) (explicit MCP_XCODE_PID partitions the pooled session key; changing it between runs can trigger a fresh mcpbridge session)"
                         ))
                     } else {
                         pidValid = false
@@ -356,7 +428,31 @@ public struct DoctorInspector: Sendable {
             ))
         }
 
-        // 7. Spawn smoke test
+        // 7. Effective DEVELOPER_DIR
+        let developerDir = opts.baseEnv["DEVELOPER_DIR"]?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        if developerDir.isEmpty {
+            checks.append(DoctorCheck(
+                name: "effective DEVELOPER_DIR", status: .info,
+                detail: "not set (using xcode-select -p)"
+            ))
+        } else if !xcodeSelectPath.isEmpty && developerDir != xcodeSelectPath {
+            checks.append(DoctorCheck(
+                name: "effective DEVELOPER_DIR", status: .warn,
+                detail: "\(developerDir) (overrides xcode-select -p \(xcodeSelectPath); DEVELOPER_DIR is part of the pooled session key, so changing it can trigger a fresh mcpbridge session)"
+            ))
+        } else if !xcodeSelectPath.isEmpty {
+            checks.append(DoctorCheck(
+                name: "effective DEVELOPER_DIR", status: .ok,
+                detail: "\(developerDir) (matches xcode-select -p)"
+            ))
+        } else {
+            checks.append(DoctorCheck(
+                name: "effective DEVELOPER_DIR", status: .info,
+                detail: developerDir
+            ))
+        }
+
+        // 8. Spawn smoke test
         if !xcrunAvailable {
             checks.append(DoctorCheck(
                 name: "spawn smoke test", status: .info,
@@ -399,7 +495,7 @@ public struct DoctorInspector: Sendable {
             }
         }
 
-        // 8. LaunchAgents directory permissions
+        // 9. LaunchAgents directory permissions
         let launchAgentsDir = (AgentPaths.plistPath() as NSString).deletingLastPathComponent
         if FileManager.default.fileExists(atPath: launchAgentsDir) {
             if FileManager.default.isWritableFile(atPath: launchAgentsDir) {
@@ -427,7 +523,7 @@ public struct DoctorInspector: Sendable {
             ))
         }
 
-        // 9. Plist file permissions
+        // 10. Plist file permissions
         let plistPath = AgentPaths.plistPath()
         if FileManager.default.fileExists(atPath: plistPath) {
             if FileManager.default.isWritableFile(atPath: plistPath) {
@@ -450,7 +546,7 @@ public struct DoctorInspector: Sendable {
             }
         }
 
-        // 10-11. LaunchAgent status checks
+        // 11-13. LaunchAgent status checks
         if let errMsg = opts.agentStatusError {
             checks.append(DoctorCheck(
                 name: "LaunchAgent status", status: .info,
@@ -466,10 +562,7 @@ public struct DoctorInspector: Sendable {
                 detail: "reachable=\(status.socketReachable) path=\(status.socketPath)"
             ))
             if !status.registeredBinary.isEmpty || !status.currentBinary.isEmpty {
-                checks.append(DoctorCheck(
-                    name: "LaunchAgent binary registration", status: .info,
-                    detail: "registered=\(status.registeredBinary) | current=\(status.currentBinary) | match=\(status.binaryPathMatches)"
-                ))
+                checks.append(launchAgentBinaryRegistrationCheck(status))
             }
         }
 
@@ -513,6 +606,40 @@ public struct DoctorInspector: Sendable {
             return String(format: "%.2fs", Double(roundedMs) / 1000.0)
         }
         return "\(roundedMs)ms"
+    }
+
+    private func launchAgentBinaryRegistrationCheck(_ status: AgentStatus) -> DoctorCheck {
+        let detailPrefix = "registered=\(status.registeredBinary) | current=\(status.currentBinary) | match=\(status.binaryPathMatches)"
+
+        if !status.registeredBinary.isEmpty && !(status.registeredBinary as NSString).isAbsolutePath {
+            return DoctorCheck(
+                name: "LaunchAgent binary registration",
+                status: .warn,
+                detail: "\(detailPrefix) | registered binary path is relative; stale older installs can make launchctl bootstrap fail with Input/output error. Rewrite the plist with the current binary or run `xcodecli agent uninstall` before retrying."
+            )
+        }
+
+        if !status.registeredBinary.isEmpty && !FileManager.default.isExecutableFile(atPath: status.registeredBinary) {
+            return DoctorCheck(
+                name: "LaunchAgent binary registration",
+                status: .warn,
+                detail: "\(detailPrefix) | registered binary is missing or not executable; the next LaunchAgent bootstrap may fail until the plist is rewritten."
+            )
+        }
+
+        if !status.registeredBinary.isEmpty && !status.currentBinary.isEmpty && !status.binaryPathMatches {
+            return DoctorCheck(
+                name: "LaunchAgent binary registration",
+                status: .warn,
+                detail: "\(detailPrefix) | switching binaries recycles the LaunchAgent backend and can surface new Xcode authorization prompts. Keep one stable xcodecli path for long-lived MCP use."
+            )
+        }
+
+        return DoctorCheck(
+            name: "LaunchAgent binary registration",
+            status: .info,
+            detail: detailPrefix
+        )
     }
 }
 

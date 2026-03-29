@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"sort"
@@ -43,9 +44,16 @@ type Summary struct {
 }
 
 type JSONReport struct {
-	Success bool    `json:"success"`
-	Summary Summary `json:"summary"`
-	Checks  []Check `json:"checks"`
+	Success         bool             `json:"success"`
+	Summary         Summary          `json:"summary"`
+	Checks          []Check          `json:"checks"`
+	Recommendations []Recommendation `json:"recommendations"`
+}
+
+type Recommendation struct {
+	ID       string   `json:"id"`
+	Message  string   `json:"message"`
+	Commands []string `json:"commands,omitempty"`
 }
 
 type Options struct {
@@ -118,9 +126,10 @@ func (r Report) Summary() Summary {
 
 func (r Report) JSON() JSONReport {
 	return JSONReport{
-		Success: r.Success(),
-		Summary: r.Summary(),
-		Checks:  append([]Check(nil), r.Checks...),
+		Success:         r.Success(),
+		Summary:         r.Summary(),
+		Checks:          append([]Check(nil), r.Checks...),
+		Recommendations: r.Recommendations(),
 	}
 }
 
@@ -131,12 +140,66 @@ func (r Report) String() string {
 	for _, check := range r.Checks {
 		fmt.Fprintf(&b, "%s %s: %s\n", statusIcon(check.Status), check.Name, check.Detail)
 	}
+	if recommendations := r.Recommendations(); len(recommendations) > 0 {
+		b.WriteString("\nRecommendations:\n")
+		for _, recommendation := range recommendations {
+			fmt.Fprintf(&b, "- %s\n", recommendation.Message)
+			for _, command := range recommendation.Commands {
+				fmt.Fprintf(&b, "  %s\n", command)
+			}
+		}
+	}
 	fmt.Fprintf(&b, "\nSummary: %d ok, %d warn, %d fail, %d info\n", summary.OK, summary.Warn, summary.Fail, summary.Info)
 	return b.String()
 }
 
+func (r Report) Recommendations() []Recommendation {
+	recommendations := []Recommendation{}
+
+	if check := findCheck(r.Checks, "LaunchAgent binary registration", StatusWarn); check != nil {
+		recommendations = append(recommendations, Recommendation{
+			ID:      "launchagent-registration",
+			Message: "LaunchAgent registration looks stale or unstable. Re-register xcodecli from one stable installed path.",
+			Commands: []string{
+				"xcodecli agent uninstall",
+				"xcodecli mcp codex",
+			},
+		})
+		if strings.Contains(check.Detail, "relative") {
+			recommendations = append(recommendations, Recommendation{
+				ID:      "launchagent-relative-path",
+				Message: "Avoid relative or versioned binary paths in LaunchAgent ProgramArguments; prefer an absolute stable path such as /opt/homebrew/bin/xcodecli.",
+			})
+		}
+	}
+
+	if findCheck(r.Checks, "effective MCP_XCODE_PID", StatusWarn) != nil {
+		recommendations = append(recommendations, Recommendation{
+			ID:      "session-key-xcode-pid",
+			Message: "Drop explicit MCP_XCODE_PID unless you intentionally want a separate pooled session.",
+		})
+	}
+
+	if findCheck(r.Checks, "effective DEVELOPER_DIR", StatusWarn) != nil {
+		recommendations = append(recommendations, Recommendation{
+			ID:      "session-key-developer-dir",
+			Message: "Keep DEVELOPER_DIR aligned with xcode-select -p across runs unless you intentionally need a separate pooled session.",
+		})
+	}
+
+	if findCheck(r.Checks, "running Xcode processes", StatusWarn) != nil {
+		recommendations = append(recommendations, Recommendation{
+			ID:      "xcode-not-running",
+			Message: "Open Xcode with the target workspace visible before using bridge-backed commands.",
+		})
+	}
+
+	return recommendations
+}
+
 func (i Inspector) Run(ctx context.Context, opts Options) Report {
 	checks := make([]Check, 0, 7)
+	xcodeSelectPath := ""
 
 	xcrunPath, err := i.LookPath("xcrun")
 	xcrunAvailable := err == nil
@@ -161,7 +224,8 @@ func (i Inspector) Run(ctx context.Context, opts Options) Report {
 	if xcodeSelectErr != nil {
 		checks = append(checks, Check{Name: "xcode-select -p", Status: StatusFail, Detail: formatCommandFailure(xcodeSelectResult, xcodeSelectErr)})
 	} else {
-		checks = append(checks, Check{Name: "xcode-select -p", Status: StatusOK, Detail: strings.TrimSpace(xcodeSelectResult.Stdout)})
+		xcodeSelectPath = strings.TrimSpace(xcodeSelectResult.Stdout)
+		checks = append(checks, Check{Name: "xcode-select -p", Status: StatusOK, Detail: xcodeSelectPath})
 	}
 
 	processes, procErr := i.ListProcesses(ctx)
@@ -195,7 +259,7 @@ func (i Inspector) Run(ctx context.Context, opts Options) Report {
 			pidValid = false
 			checks = append(checks, Check{Name: "effective MCP_XCODE_PID", Status: StatusFail, Detail: fmt.Sprintf("PID %d does not look like an Xcode.app process (%s)", pid, proc.Command)})
 		} else {
-			checks = append(checks, Check{Name: "effective MCP_XCODE_PID", Status: StatusOK, Detail: fmt.Sprintf("PID %d -> %s", pid, proc.Command)})
+			checks = append(checks, Check{Name: "effective MCP_XCODE_PID", Status: StatusWarn, Detail: fmt.Sprintf("PID %d -> %s (explicit MCP_XCODE_PID partitions the pooled session key; changing it between runs can trigger a fresh mcpbridge session)", pid, proc.Command)})
 		}
 	}
 
@@ -207,6 +271,18 @@ func (i Inspector) Run(ctx context.Context, opts Options) Report {
 		checks = append(checks, Check{Name: "effective MCP_XCODE_SESSION_ID", Status: StatusFail, Detail: "MCP_XCODE_SESSION_ID must be a UUID"})
 	} else {
 		checks = append(checks, Check{Name: "effective MCP_XCODE_SESSION_ID", Status: StatusOK, Detail: formatSessionDetail(opts)})
+	}
+
+	developerDir := strings.TrimSpace(envValue(opts.BaseEnv, "DEVELOPER_DIR"))
+	switch {
+	case developerDir == "":
+		checks = append(checks, Check{Name: "effective DEVELOPER_DIR", Status: StatusInfo, Detail: "not set (using xcode-select -p)"})
+	case xcodeSelectPath != "" && developerDir != xcodeSelectPath:
+		checks = append(checks, Check{Name: "effective DEVELOPER_DIR", Status: StatusWarn, Detail: fmt.Sprintf("%s (overrides xcode-select -p %s; DEVELOPER_DIR is part of the pooled session key, so changing it can trigger a fresh mcpbridge session)", developerDir, xcodeSelectPath)})
+	case xcodeSelectPath != "":
+		checks = append(checks, Check{Name: "effective DEVELOPER_DIR", Status: StatusOK, Detail: fmt.Sprintf("%s (matches xcode-select -p)", developerDir)})
+	default:
+		checks = append(checks, Check{Name: "effective DEVELOPER_DIR", Status: StatusInfo, Detail: developerDir})
 	}
 
 	smokeEnv := bridge.ApplyEnvOverrides(opts.BaseEnv, bridge.EnvOptions{XcodePID: opts.XcodePID, SessionID: opts.SessionID})
@@ -236,11 +312,49 @@ func (i Inspector) Run(ctx context.Context, opts Options) Report {
 		checks = append(checks, Check{Name: "LaunchAgent plist", Status: StatusInfo, Detail: fmt.Sprintf("installed=%t path=%s", opts.AgentStatus.PlistInstalled, opts.AgentStatus.PlistPath)})
 		checks = append(checks, Check{Name: "LaunchAgent socket", Status: StatusInfo, Detail: fmt.Sprintf("reachable=%t path=%s", opts.AgentStatus.SocketReachable, opts.AgentStatus.SocketPath)})
 		if opts.AgentStatus.RegisteredBinary != "" || opts.AgentStatus.CurrentBinary != "" {
-			checks = append(checks, Check{Name: "LaunchAgent binary registration", Status: StatusInfo, Detail: fmt.Sprintf("registered=%s | current=%s | match=%t", opts.AgentStatus.RegisteredBinary, opts.AgentStatus.CurrentBinary, opts.AgentStatus.BinaryPathMatches)})
+			checks = append(checks, launchAgentBinaryRegistrationCheck(*opts.AgentStatus))
 		}
 	}
 
 	return Report{Checks: checks}
+}
+
+func findCheck(checks []Check, name string, status Status) *Check {
+	for i := range checks {
+		if checks[i].Name == name && checks[i].Status == status {
+			return &checks[i]
+		}
+	}
+	return nil
+}
+
+func launchAgentBinaryRegistrationCheck(status agent.Status) Check {
+	detailPrefix := fmt.Sprintf("registered=%s | current=%s | match=%t", status.RegisteredBinary, status.CurrentBinary, status.BinaryPathMatches)
+
+	if strings.TrimSpace(status.RegisteredBinary) != "" && !filepath.IsAbs(status.RegisteredBinary) {
+		return Check{
+			Name:   "LaunchAgent binary registration",
+			Status: StatusWarn,
+			Detail: detailPrefix + " | registered binary path is relative; stale older installs can make launchctl bootstrap fail with Input/output error. Rewrite the plist with the current binary or run `xcodecli agent uninstall` before retrying.",
+		}
+	}
+	if strings.TrimSpace(status.RegisteredBinary) != "" {
+		if info, err := os.Stat(status.RegisteredBinary); err != nil || info.IsDir() || info.Mode()&0o111 == 0 {
+			return Check{
+				Name:   "LaunchAgent binary registration",
+				Status: StatusWarn,
+				Detail: detailPrefix + " | registered binary is missing or not executable; the next LaunchAgent bootstrap may fail until the plist is rewritten.",
+			}
+		}
+	}
+	if strings.TrimSpace(status.RegisteredBinary) != "" && strings.TrimSpace(status.CurrentBinary) != "" && !status.BinaryPathMatches {
+		return Check{
+			Name:   "LaunchAgent binary registration",
+			Status: StatusWarn,
+			Detail: detailPrefix + " | switching binaries recycles the LaunchAgent backend and can surface new Xcode authorization prompts. Keep one stable xcodecli path for long-lived MCP use.",
+		}
+	}
+	return Check{Name: "LaunchAgent binary registration", Status: StatusInfo, Detail: detailPrefix}
 }
 
 func formatSessionDetail(opts Options) string {
@@ -306,6 +420,16 @@ func summarizeProcesses(processes []Process) string {
 		parts = append(parts, fmt.Sprintf("%d %s", proc.PID, proc.Command))
 	}
 	return strings.Join(parts, " | ")
+}
+
+func envValue(env []string, key string) string {
+	prefix := key + "="
+	for _, entry := range env {
+		if strings.HasPrefix(entry, prefix) {
+			return strings.TrimPrefix(entry, prefix)
+		}
+	}
+	return ""
 }
 
 func findProcess(processes []Process, pid int) (Process, bool) {

@@ -50,6 +50,9 @@ func TestReportJSON(t *testing.T) {
 	if !strings.Contains(string(data), `"checks"`) {
 		t.Fatalf("unexpected JSON payload: %s", string(data))
 	}
+	if !strings.Contains(string(data), `"recommendations"`) {
+		t.Fatalf("unexpected JSON payload missing recommendations: %s", string(data))
+	}
 }
 
 func TestInspectorRunSuccess(t *testing.T) {
@@ -90,7 +93,7 @@ func TestInspectorRunSuccess(t *testing.T) {
 	if !report.Success() {
 		t.Fatalf("expected success report, got: %s", report.String())
 	}
-	if !strings.Contains(report.String(), "Summary: 7 ok, 0 warn, 0 fail, 0 info") {
+	if !strings.Contains(report.String(), "Summary: 6 ok, 1 warn, 0 fail, 1 info") {
 		t.Fatalf("unexpected summary: %s", report.String())
 	}
 }
@@ -125,6 +128,22 @@ func TestInspectorIncludesAgentStatusInfo(t *testing.T) {
 		if !strings.Contains(text, want) {
 			t.Fatalf("report output missing %q: %s", want, text)
 		}
+	}
+}
+
+func TestReportRecommendationsIncludeLaunchAgentHelp(t *testing.T) {
+	report := Report{Checks: []Check{
+		{Name: "LaunchAgent binary registration", Status: StatusWarn, Detail: "registered=../Cellar/xcodecli | current=/opt/homebrew/bin/xcodecli | match=false | registered binary path is relative"},
+	}}
+	recommendations := report.Recommendations()
+	if len(recommendations) == 0 {
+		t.Fatal("expected recommendations for stale LaunchAgent registration")
+	}
+	if recommendations[0].ID != "launchagent-registration" {
+		t.Fatalf("unexpected first recommendation: %+v", recommendations[0])
+	}
+	if !strings.Contains(report.String(), "Recommendations:") {
+		t.Fatalf("doctor text should include recommendations section: %s", report.String())
 	}
 }
 

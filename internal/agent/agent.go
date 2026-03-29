@@ -48,6 +48,8 @@ type Status struct {
 	PID               int           `json:"pid"`
 	IdleTimeout       time.Duration `json:"idleTimeout"`
 	BackendSessions   int           `json:"backendSessions"`
+	Warnings          []string      `json:"warnings,omitempty"`
+	NextSteps         []string      `json:"nextSteps,omitempty"`
 }
 
 type runtimeStatus struct {

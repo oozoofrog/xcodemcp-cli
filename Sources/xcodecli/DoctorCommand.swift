@@ -39,12 +39,24 @@ struct DoctorCommand: AsyncParsableCommand {
             )
         }
 
+        let agentStatus: AgentStatus?
+        let agentStatusError: String?
+        do {
+            agentStatus = try await AgentClient.status()
+            agentStatusError = nil
+        } catch {
+            agentStatus = nil
+            agentStatusError = error.localizedDescription
+        }
+
         let opts = DoctorOptions(
             baseEnv: env,
             xcodePID: resolved.envOptions.xcodePID,
             sessionID: resolved.envOptions.sessionID,
             sessionSource: resolved.sessionSource,
-            sessionPath: resolved.sessionPath
+            sessionPath: resolved.sessionPath,
+            agentStatus: agentStatus,
+            agentStatusError: agentStatusError
         )
 
         let inspector = DoctorInspector(processRunner: SystemProcessRunner())

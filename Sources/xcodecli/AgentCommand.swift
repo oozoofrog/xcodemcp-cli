@@ -186,23 +186,37 @@ func formatAgentStatus(_ status: AgentStatus) -> String {
     }
     let runningText = status.running ? "yes" : "no"
     let socketText = status.socketReachable ? "yes" : "no"
+    let warnings = status.warnings.isEmpty ? deriveAgentStatusWarnings(status) : status.warnings
+    let nextSteps = status.nextSteps.isEmpty ? deriveAgentStatusNextSteps(status, warnings: warnings) : status.nextSteps
 
-    return """
-    xcodecli agent
+    var lines = [
+        "xcodecli agent",
+        "",
+        "label: \(status.label)",
+        "plist installed: \(status.plistInstalled)",
+        "plist path: \(status.plistPath)",
+        "registered binary: \(binaryLine)",
+        "current binary: \(status.currentBinary)",
+        "binary matches: \(matchText)",
+        "socket path: \(status.socketPath)",
+        "socket reachable: \(socketText)",
+        "running: \(runningText)",
+        "pid: \(status.pid)",
+        "idle timeout: \(formatTimeoutDuration(ns: status.idleTimeoutNs))",
+        "backend sessions: \(status.backendSessions)",
+    ]
 
-    label: \(status.label)
-    plist installed: \(status.plistInstalled)
-    plist path: \(status.plistPath)
-    registered binary: \(binaryLine)
-    current binary: \(status.currentBinary)
-    binary matches: \(matchText)
-    socket path: \(status.socketPath)
-    socket reachable: \(socketText)
-    running: \(runningText)
-    pid: \(status.pid)
-    idle timeout: \(formatTimeoutDuration(ns: status.idleTimeoutNs))
-    backend sessions: \(status.backendSessions)
-    """
+    if !warnings.isEmpty {
+        lines.append("warnings:")
+        lines.append(contentsOf: warnings.map { "- \($0)" })
+    }
+
+    if !nextSteps.isEmpty {
+        lines.append("next steps:")
+        lines.append(contentsOf: nextSteps.map { "- \($0)" })
+    }
+
+    return lines.joined(separator: "\n") + "\n"
 }
 
 func formatTimeoutDuration(ns: Int64) -> String {
