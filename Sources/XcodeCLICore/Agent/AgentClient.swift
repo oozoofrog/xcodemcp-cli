@@ -217,17 +217,13 @@ public enum AgentClient {
             paths: paths, label: label, binaryPath: executablePath
         )
 
-        let serviceTarget = launchAgentServiceTarget(label: label)
-        if forceRestart || changed {
-            try? await launchd.bootout(target: serviceTarget)
-            try await launchd.bootstrap(domainTarget: launchAgentDomainTarget(), plistPath: paths.plistPath)
-        } else {
-            if let _ = try? await launchd.print(target: serviceTarget) {
-                try await launchd.kickstart(serviceTarget: serviceTarget)
-            } else {
-                try await launchd.bootstrap(domainTarget: launchAgentDomainTarget(), plistPath: paths.plistPath)
-            }
-        }
+        try await ensureLaunchAgentLoaded(
+            launchd: launchd,
+            label: label,
+            plistPath: paths.plistPath,
+            forceRestart: forceRestart,
+            plistChanged: changed
+        )
 
         try await waitForReady()
     }

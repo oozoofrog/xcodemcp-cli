@@ -270,6 +270,82 @@ func TestListToolsRecyclesLaunchAgentWhenBinaryIdentityChangesAtSamePath(t *test
 	}
 }
 
+func TestListToolsRetriesBootstrapAfterBootstrapFailure(t *testing.T) {
+	tempDir, paths := newShortPaths(t)
+	spawnFile := filepath.Join(tempDir, "spawn.log")
+	serverCfg := testServerConfig(t, paths, spawnFile, 5*time.Second)
+	harness := newServerHarness(t, serverCfg)
+	launchd := &fakeLaunchd{
+		harness:       harness,
+		bootstrapErrs: []error{fmt.Errorf("launchctl bootstrap gui/501 %s: exit status 5 (Bootstrap failed: 5: Input/output error)", paths.PlistPath)},
+	}
+	clientCfg := testClientConfig(paths, spawnFile, 5*time.Second, launchd)
+	clientCfg.ExecutablePath = func() (string, error) { return "/tmp/xcodecli-bootstrap-retry", nil }
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if _, err := ListTools(ctx, clientCfg, Request{Timeout: 2 * time.Second}); err != nil {
+		t.Fatalf("ListTools returned error: %v", err)
+	}
+
+	if launchd.bootstrapCalls != 2 {
+		t.Fatalf("bootstrapCalls = %d, want 2 after retry", launchd.bootstrapCalls)
+	}
+	if launchd.bootoutCalls != 1 {
+		t.Fatalf("bootoutCalls = %d, want 1 after bootstrap recovery", launchd.bootoutCalls)
+	}
+	if count := helperSpawnCount(t, spawnFile); count != 1 {
+		t.Fatalf("backend helper spawn count = %d, want 1 after successful bootstrap retry", count)
+	}
+}
+
+func TestListToolsRebootstrapsAfterKickstartFailure(t *testing.T) {
+	tempDir, paths := newShortPaths(t)
+	spawnFile := filepath.Join(tempDir, "spawn.log")
+	binaryPath := filepath.Join(tempDir, "xcodecli-kickstart")
+	if err := os.WriteFile(binaryPath, []byte("kickstart-binary"), 0o755); err != nil {
+		t.Fatalf("WriteFile(%q) failed: %v", binaryPath, err)
+	}
+	identity, err := binaryIdentityForExecutable(binaryPath)
+	if err != nil {
+		t.Fatalf("binaryIdentityForExecutable(%q) failed: %v", binaryPath, err)
+	}
+	if err := writeBinaryIdentity(binaryIdentityPath(paths), identity); err != nil {
+		t.Fatalf("writeBinaryIdentity returned error: %v", err)
+	}
+	serverCfg := testServerConfig(t, paths, spawnFile, 5*time.Second)
+	harness := newServerHarness(t, serverCfg)
+	launchd := &fakeLaunchd{
+		harness:       harness,
+		bootstrapped:  true,
+		kickstartErrs: []error{fmt.Errorf("launchctl kickstart %s: exit status 3", launchAgentServiceTarget(LaunchAgentLabel))},
+	}
+	clientCfg := testClientConfig(paths, spawnFile, 5*time.Second, launchd)
+	clientCfg.ExecutablePath = func() (string, error) { return binaryPath, nil }
+	if err := os.WriteFile(paths.PlistPath, []byte(renderLaunchAgentPlist(paths, LaunchAgentLabel, binaryPath)), 0o644); err != nil {
+		t.Fatalf("WriteFile(%q) failed: %v", paths.PlistPath, err)
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if _, err := ListTools(ctx, clientCfg, Request{Timeout: 2 * time.Second}); err != nil {
+		t.Fatalf("ListTools returned error: %v", err)
+	}
+
+	if launchd.kickstartCalls != 1 {
+		t.Fatalf("kickstartCalls = %d, want 1", launchd.kickstartCalls)
+	}
+	if launchd.bootoutCalls != 1 {
+		t.Fatalf("bootoutCalls = %d, want 1 after kickstart recovery", launchd.bootoutCalls)
+	}
+	if launchd.bootstrapCalls != 1 {
+		t.Fatalf("bootstrapCalls = %d, want 1 after kickstart recovery", launchd.bootstrapCalls)
+	}
+	if count := helperSpawnCount(t, spawnFile); count != 1 {
+		t.Fatalf("backend helper spawn count = %d, want 1 after kickstart recovery", count)
+	}
+}
+
 func TestListToolsDoesNotBlockOnRetiredIdleSessionAbort(t *testing.T) {
 	oldFactory := newSessionClient
 	t.Cleanup(func() { newSessionClient = oldFactory })
@@ -982,6 +1058,8 @@ type fakeLaunchd struct {
 	bootstrapCalls int
 	kickstartCalls int
 	bootoutCalls   int
+	bootstrapErrs  []error
+	kickstartErrs  []error
 	harness        *serverHarness
 }
 
@@ -1069,9 +1147,19 @@ func (f *fakeLaunchd) Print(ctx context.Context, target string) (string, error) 
 
 func (f *fakeLaunchd) Bootstrap(ctx context.Context, domainTarget, plistPath string) error {
 	f.mu.Lock()
-	f.bootstrapped = true
 	f.bootstrapCalls++
+	var err error
+	if len(f.bootstrapErrs) > 0 {
+		err = f.bootstrapErrs[0]
+		f.bootstrapErrs = f.bootstrapErrs[1:]
+	}
+	if err == nil {
+		f.bootstrapped = true
+	}
 	f.mu.Unlock()
+	if err != nil {
+		return err
+	}
 	return f.harness.start()
 }
 
@@ -1079,9 +1167,17 @@ func (f *fakeLaunchd) Kickstart(ctx context.Context, serviceTarget string) error
 	f.mu.Lock()
 	bootstrapped := f.bootstrapped
 	f.kickstartCalls++
+	var err error
+	if len(f.kickstartErrs) > 0 {
+		err = f.kickstartErrs[0]
+		f.kickstartErrs = f.kickstartErrs[1:]
+	}
 	f.mu.Unlock()
 	if !bootstrapped {
 		return fmt.Errorf("service %s not loaded", serviceTarget)
+	}
+	if err != nil {
+		return err
 	}
 	return f.harness.start()
 }

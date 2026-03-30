@@ -350,19 +350,34 @@ func ensureAgentReady(ctx context.Context, cfg Config, forceRestart bool) error 
 		return err
 	}
 	serviceTarget := launchAgentServiceTarget(cfg.Label)
+	bootstrapAfterCleanup := func(reason error, alreadyCleaned bool) error {
+		if !alreadyCleaned {
+			_ = cfg.Launchd.Bootout(ctx, serviceTarget)
+		}
+		if err := cfg.Launchd.Bootstrap(ctx, launchAgentDomainTarget(), cfg.Paths.PlistPath); err != nil {
+			return fmt.Errorf("retry launchctl bootstrap after cleanup: %w (initial error: %v)", err, reason)
+		}
+		return nil
+	}
 	if forceRestart || changed {
 		_ = cfg.Launchd.Bootout(ctx, serviceTarget)
 		if err := cfg.Launchd.Bootstrap(ctx, launchAgentDomainTarget(), cfg.Paths.PlistPath); err != nil {
-			return fmt.Errorf("bootstrap LaunchAgent %s: %w", cfg.Label, err)
+			if retryErr := bootstrapAfterCleanup(err, true); retryErr != nil {
+				return fmt.Errorf("bootstrap LaunchAgent %s: %w", cfg.Label, retryErr)
+			}
 		}
 	} else {
 		if _, printErr := cfg.Launchd.Print(ctx, serviceTarget); printErr == nil {
 			if err := cfg.Launchd.Kickstart(ctx, serviceTarget); err != nil {
-				return fmt.Errorf("kickstart LaunchAgent %s: %w", cfg.Label, err)
+				if retryErr := bootstrapAfterCleanup(err, false); retryErr != nil {
+					return fmt.Errorf("rebootstrap LaunchAgent %s after kickstart failure: %w", cfg.Label, retryErr)
+				}
 			}
 		} else {
 			if err := cfg.Launchd.Bootstrap(ctx, launchAgentDomainTarget(), cfg.Paths.PlistPath); err != nil {
-				return fmt.Errorf("bootstrap LaunchAgent %s: %w", cfg.Label, err)
+				if retryErr := bootstrapAfterCleanup(err, false); retryErr != nil {
+					return fmt.Errorf("bootstrap LaunchAgent %s: %w", cfg.Label, retryErr)
+				}
 			}
 		}
 	}

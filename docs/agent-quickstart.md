@@ -2,6 +2,10 @@
 
 This guide is for a first-time agent or automation that needs to discover and call Xcode MCP tools through `xcodecli`.
 
+If you specifically need guidance on repeated Xcode authorization prompts, pooled session reuse, or recovery steps, also read:
+- English: `docs/authorization-troubleshooting.md`
+- Korean: `docs/authorization-troubleshooting.kr.md`
+
 ## 1. Build the CLI
 
 ```bash
@@ -63,6 +67,20 @@ To minimize repeated Xcode authorization prompts across sessions:
 - avoid changing `MCP_XCODE_PID` or `DEVELOPER_DIR` unless you intentionally want a different pooled session
 - if `mcp config` warns that the current executable path looks unstable, re-run it from a stable installed path before registering the server with your MCP client
 - if you want policy enforcement instead of advisory output, add `--strict-stable-path` to `mcp config`
+
+What counts as "the same session" for authorization reuse:
+- `xcodecli` reuses backend `mcpbridge` state by a pooled session key: `{XcodePID, SessionID, DeveloperDir}`.
+- Different terminal windows or new CLI processes can still stay on the **same** pooled session if those three values remain unchanged.
+- By default, `xcodecli` reuses the persistent session ID stored at `~/Library/Application Support/xcodecli/session-id`, which is the safest choice if you want repeated calls from different shells to stay on one pooled session.
+- Passing a different `--session-id`, changing `MCP_XCODE_PID`, changing `DEVELOPER_DIR`, switching binaries, or forcing `agent stop` / `agent uninstall` can move the next request onto a fresh backend session and may surface a fresh Xcode authorization prompt.
+
+Practical operating rules:
+1. Register one stable installed `xcodecli` path and keep using that exact path.
+2. Prefer default agent mode over raw bridge mode for long-lived MCP usage.
+3. Reuse the default persistent session ID; only pass `--session-id` when you intentionally want isolation.
+4. Do not set `MCP_XCODE_PID` or `DEVELOPER_DIR` unless you are intentionally targeting a different Xcode instance/toolchain.
+5. Avoid `agent stop` / `agent uninstall` during normal use; reserve them for recovery and troubleshooting.
+6. Treat authorization reuse as valid **within one pooled session**, not as a global one-time grant across every possible session configuration.
 
 ## 5. Discover available tools
 

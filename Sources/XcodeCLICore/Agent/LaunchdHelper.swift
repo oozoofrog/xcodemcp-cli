@@ -57,3 +57,86 @@ public func launchAgentDomainTarget() -> String {
 public func launchAgentServiceTarget(label: String) -> String {
     "\(launchAgentDomainTarget())/\(label)"
 }
+
+func recoverBootstrap(
+    launchd: any LaunchdInterface,
+    label: String,
+    plistPath: String,
+    initialError: Error,
+    alreadyCleaned: Bool
+) async throws -> Void {
+    if !alreadyCleaned {
+        try? await launchd.bootout(target: launchAgentServiceTarget(label: label))
+    }
+    do {
+        try await launchd.bootstrap(
+            domainTarget: launchAgentDomainTarget(),
+            plistPath: plistPath
+        )
+    } catch {
+        throw XcodeCLIError.agentUnavailable(
+            stage: "launchctl",
+            underlying:
+                "retry launchctl bootstrap after cleanup failed: \(error.localizedDescription) (initial error: \(initialError.localizedDescription))"
+        )
+    }
+}
+
+func ensureLaunchAgentLoaded(
+    launchd: any LaunchdInterface,
+    label: String,
+    plistPath: String,
+    forceRestart: Bool,
+    plistChanged: Bool
+) async throws {
+    let serviceTarget = launchAgentServiceTarget(label: label)
+
+    if forceRestart || plistChanged {
+        try? await launchd.bootout(target: serviceTarget)
+        do {
+            try await launchd.bootstrap(
+                domainTarget: launchAgentDomainTarget(),
+                plistPath: plistPath
+            )
+        } catch {
+            try await recoverBootstrap(
+                launchd: launchd,
+                label: label,
+                plistPath: plistPath,
+                initialError: error,
+                alreadyCleaned: true
+            )
+        }
+        return
+    }
+
+    if (try? await launchd.print(target: serviceTarget)) != nil {
+        do {
+            try await launchd.kickstart(serviceTarget: serviceTarget)
+        } catch {
+            try await recoverBootstrap(
+                launchd: launchd,
+                label: label,
+                plistPath: plistPath,
+                initialError: error,
+                alreadyCleaned: false
+            )
+        }
+        return
+    }
+
+    do {
+        try await launchd.bootstrap(
+            domainTarget: launchAgentDomainTarget(),
+            plistPath: plistPath
+        )
+    } catch {
+        try await recoverBootstrap(
+            launchd: launchd,
+            label: label,
+            plistPath: plistPath,
+            initialError: error,
+            alreadyCleaned: false
+        )
+    }
+}
