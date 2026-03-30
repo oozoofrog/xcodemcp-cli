@@ -888,15 +888,16 @@ curl -fsSL https://raw.githubusercontent.com/oozoofrog/xcodecli/main/scripts/ins
 
 ### 9.4 릴리스 흐름
 1. `main` merge
-2. local verify (`swift test`, build, version)
-3. annotated tag push (`vX.Y.Z`)
-4. GitHub Release draft/publish
-5. `release.published` → Homebrew workflow
+2. `./scripts/release.sh vX.Y.Z --dry-run` 으로 릴리스 계획 확인
+3. `./scripts/release.sh vX.Y.Z` 실행
+4. version 범프 전에 `origin=oozoofrog/xcodecli` 와 `HEAD == origin/main` 을 강제 확인
+5. 스크립트가 version source 범프, local verify, release commit + tag atomic push, Homebrew 반영, GitHub Release 생성을 순서대로 처리
 
 ### 9.5 Homebrew
 - tap repo: `oozoofrog/homebrew-tap`
 - 작업 대상: `Formula/xcodecli.rb` 한 파일만
-- script: `scripts/release_homebrew.sh`
+- 표준 진입점: `scripts/release.sh`
+- 복구 / 저수준 script: `scripts/release_homebrew.sh`
 - 작업:
   - tag tarball download
   - sha256 계산
@@ -906,26 +907,11 @@ curl -fsSL https://raw.githubusercontent.com/oozoofrog/xcodecli/main/scripts/ins
   - smoke test + `brew test`
   - dry-run / local commit / push 지원
 
-### 9.6 CI
-#### `.github/workflows/ci.yml`
-트리거:
-- push `main`
-- push `codex/**`
-- PR
-
-작업:
-- `swift build`
-- `swift test`
-- `./scripts/build-swift.sh .tmp/xcodecli`
-- version 출력 검증
-
-#### `.github/workflows/homebrew-release.yml`
-트리거:
-- `release.published`
-- `workflow_dispatch`
-
-필수 secret:
-- `HOMEBREW_TAP_GITHUB_TOKEN`
+### 9.6 릴리스 자동화
+- CI 또는 release publish 를 위한 hosted GitHub Actions workflow 는 사용하지 않음
+- 검증과 publish 는 macOS 로컬 환경에서 maintainer 가 직접 수행
+- GitHub Release 생성에는 `gh` 사용
+- `HOMEBREW_TAP_GITHUB_TOKEN` 은 shared tap clone/push 용 선택적 로컬 HTTPS 인증 수단
 
 ---
 
@@ -942,7 +928,7 @@ curl -fsSL https://raw.githubusercontent.com/oozoofrog/xcodecli/main/scripts/ins
 8. tool timeout 기본 분류표
 9. `mcp config` client별 command generation 규칙
 10. doctor / agent guide / agent demo / agent status JSON shape
-11. build/install/release/Homebrew/CI 운영 흐름
+11. build/install/release/Homebrew 운영 흐름
 
 ---
 

@@ -67,7 +67,7 @@ xcodecli update
 
 The shared `oozoofrog/tap` repository can host multiple formulas and casks. `xcodecli` is published there as `Formula/xcodecli.rb`.
 
-If a release needs to be synced manually, see `docs/releasing.md` and `./scripts/release_homebrew.sh`.
+Releases are cut locally on macOS via `./scripts/release.sh vX.Y.Z`, but only from `main` when `origin` points to `oozoofrog/xcodecli` and `HEAD` exactly matches `origin/main`. For a full procedure, dry-run example, or tap-only recovery path, see `docs/releasing.md` and `./scripts/release_homebrew.sh`.
 
 For MCP authorization reuse, same-session behavior, and repeated-prompt recovery, see:
 - English: `docs/authorization-troubleshooting.md`
@@ -271,7 +271,7 @@ The project now uses stable semantic versioning tags with the following release 
 - `v1.0.1`, `v1.0.2`, ...: patch releases for bug fixes, CI/test hardening, documentation corrections, and internal refactors that do not intentionally expand the public CLI surface.
 - `v1.1.0`, `v1.2.0`, ...: minor releases for new commands, new flags, new output modes, default-behavior expansions, or materially new LaunchAgent / MCP capabilities.
 - Breaking CLI behavior is avoided when possible. Any unavoidable breaking change should ship in a new major release and must be called out explicitly in `CHANGELOG.md` and the GitHub Release notes.
-- Releases should be cut from `main` only after CI is green.
+- Releases should be cut from `main` only after the local checks in `./scripts/release.sh vX.Y.Z` are ready to pass end-to-end.
 - Tags should remain annotated `vMAJOR.MINOR.PATCH` tags, and GitHub Releases should continue to use generated notes unless a release needs hand-written upgrade guidance.
 - The active maintenance line is `v1.1.x`. Small fixes should prefer the next patch tag on that line before opening a new minor series.
 

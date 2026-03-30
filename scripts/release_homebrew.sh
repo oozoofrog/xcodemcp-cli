@@ -26,7 +26,8 @@ Behavior:
   - Pushes the tap commit only when --push is set
 
 Environment:
-  HOMEBREW_TAP_GITHUB_TOKEN  Optional. Used for cloning/pushing the tap over HTTPS.
+  HOMEBREW_TAP_GITHUB_TOKEN  Optional. Local HTTPS auth for cloning/pushing the tap.
+                              If unset, the script falls back to gh repo clone or SSH git remote access.
 USAGE
 }
 
@@ -56,12 +57,11 @@ clone_tap_repo() {
 
 ensure_git_identity() {
   local tap_dir="$1"
-  if ! git -C "$tap_dir" config user.name >/dev/null; then
-    git -C "$tap_dir" config user.name "github-actions[bot]"
-  fi
-  if ! git -C "$tap_dir" config user.email >/dev/null; then
-    git -C "$tap_dir" config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-  fi
+  local user_name user_email
+  user_name="$(git -C "$tap_dir" config user.name || true)"
+  user_email="$(git -C "$tap_dir" config user.email || true)"
+  [[ -n "$user_name" ]] || fail "git user.name is required to create the tap commit"
+  [[ -n "$user_email" ]] || fail "git user.email is required to create the tap commit"
 }
 
 ensure_tap_repo_safe() {

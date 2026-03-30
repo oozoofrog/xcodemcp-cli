@@ -12,7 +12,7 @@
 
 ## Key Files
 - `agent-quickstart.md`: first-time discovery path for agents and automation using `xcodecli`.
-- `releasing.md`: canonical release, GitHub Release, and Homebrew flow.
+- `releasing.md`: canonical local release, GitHub Release, and Homebrew flow.
 - `implementation-spec.md`: full technical contract for reimplementation and agent reference (English).
 - `implementation-spec.kr.md`: Korean translation of `implementation-spec.md`.
 
@@ -29,8 +29,8 @@
   - [cmd/xcodecli/cli.go](../cmd/xcodecli/cli.go) help text
 - Release flow changes should review:
   - [docs/releasing.md](./releasing.md)
+  - [scripts/release.sh](../scripts/release.sh)
   - [scripts/release_homebrew.sh](../scripts/release_homebrew.sh)
-  - [.github/workflows/homebrew-release.yml](../.github/workflows/homebrew-release.yml)
   - version examples in [README.md](../README.md)
 
 ## Canonical Source Notes

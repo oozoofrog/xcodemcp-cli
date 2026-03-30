@@ -888,15 +888,16 @@ curl -fsSL https://raw.githubusercontent.com/oozoofrog/xcodecli/main/scripts/ins
 
 ### 9.4 Release flow
 1. Merge into `main`
-2. Run local verification (`swift test`, build, version)
-3. Push an annotated tag (`vX.Y.Z`)
-4. Create/publish a GitHub Release
-5. `release.published` triggers the Homebrew workflow
+2. Preview the release with `./scripts/release.sh vX.Y.Z --dry-run`
+3. Run `./scripts/release.sh vX.Y.Z`
+4. The script requires `origin=oozoofrog/xcodecli` and `HEAD == origin/main` before the version bump
+5. The script bumps version sources, runs local verification, atomically pushes the release commit + tag, updates Homebrew, and creates the GitHub Release
 
 ### 9.5 Homebrew
 - Tap repo: `oozoofrog/homebrew-tap`
 - Only `Formula/xcodecli.rb` may be modified
-- Script: `scripts/release_homebrew.sh`
+- Standard entrypoint: `scripts/release.sh`
+- Recovery / low-level script: `scripts/release_homebrew.sh`
 - Operations:
   - download tag tarball
   - compute sha256
@@ -906,26 +907,11 @@ curl -fsSL https://raw.githubusercontent.com/oozoofrog/xcodecli/main/scripts/ins
   - smoke test + `brew test`
   - support dry-run / local commit / push
 
-### 9.6 CI
-#### `.github/workflows/ci.yml`
-Triggers:
-- push to `main`
-- push to `codex/**`
-- pull requests
-
-Jobs:
-- `swift build`
-- `swift test`
-- `./scripts/build-swift.sh .tmp/xcodecli`
-- version output verification
-
-#### `.github/workflows/homebrew-release.yml`
-Triggers:
-- `release.published`
-- `workflow_dispatch`
-
-Required secret:
-- `HOMEBREW_TAP_GITHUB_TOKEN`
+### 9.6 Release automation
+- No hosted GitHub Actions workflows are required for CI or release publishing
+- Maintainers run verification and publishing locally on macOS
+- `gh` is used for GitHub Release creation
+- `HOMEBREW_TAP_GITHUB_TOKEN` is optional local HTTPS auth for shared tap clone/push
 
 ---
 
@@ -942,7 +928,7 @@ Any reimplementation must preserve at least the following:
 8. Default tool timeout categories
 9. `mcp config` client-specific command generation rules
 10. doctor / agent guide / agent demo / agent status JSON shapes
-11. Build / install / release / Homebrew / CI operational flow
+11. Build / install / release / Homebrew operational flow
 
 ---
 
